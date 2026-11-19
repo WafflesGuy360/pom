@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LEVEL 0 – Take Care</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:"Courier New",monospace;color:#ddd;user-select:none}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated}
+  #vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 18%,#000e 100%)}
+  #red{position:fixed;inset:0;pointer-events:none;background:#c00;opacity:0}
+  #black{position:fixed;inset:0;background:#000;display:none;z-index:4;align-items:center;justify-content:center;color:#c33;font-size:clamp(18px,4vw,36px);letter-spacing:.1em;text-align:center;padding:20px}
+  #hud{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:16px;font-size:16px;color:#cfc;z-index:3;pointer-events:none;text-shadow:0 0 6px #000;line-height:1.6}
+  #bar{width:120px;height:6px;background:#0008;margin-top:4px;border:1px solid #fff4}
+  #bar i{display:block;height:100%;background:#9f9;width:100%}
+  #arrow{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:calc(50% - 18px);font-size:28px;font-weight:bold;color:#4f6;opacity:.5;z-index:3;pointer-events:none;text-shadow:0 0 8px #0f3}
+  #msg{position:fixed;top:20%;left:0;right:0;text-align:center;font-size:clamp(18px,3.5vw,32px);color:#fff;text-shadow:0 0 10px #000;z-index:3;pointer-events:none;opacity:0;transition:opacity .6s;letter-spacing:.06em}
+  #menu{position:fixed;inset:0;background:#000d;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:pointer;z-index:5;padding:20px}
+  #menu h1{font-size:clamp(28px,7vw,64px);letter-spacing:.2em;margin:0 0 16px;color:#e8e0a0}
+  #menu p{color:#aaa;max-width:560px;line-height:1.6;margin:6px}
+  #hint{position:fixed;left:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));font-size:12px;color:#888;pointer-events:none;z-index:3}
+  #js,#fk{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:none;pointer-events:none}
+  #js{z-index:6}#fk{z-index:5}
+  #vhs{position:fixed;inset:0;display:none;pointer-events:none;z-index:3;background:repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0 1px,transparent 1px 3px)}
+  #intro{position:fixed;inset:0;background:#000;z-index:8;display:none;align-items:center;justify-content:center}
+  #intro img,#itx{opacity:0;max-width:72vw;max-height:62vh}
+  #itx{display:none;color:#e8e0a0;font-size:clamp(32px,9vw,90px);letter-spacing:.3em;text-shadow:0 0 24px #e8e0a055}
+  #intro.go img,#intro.go #itx{animation:lg 6.5s ease-in-out forwards}
+  @keyframes lg{0%{opacity:0;transform:scale(.9);filter:blur(14px) brightness(.3)}8%{opacity:.2}12%{opacity:0}35%{opacity:1;transform:scale(1);filter:blur(0) brightness(1)}70%{opacity:1;transform:scale(1.06);filter:blur(0) brightness(1)}100%{opacity:0;transform:scale(1.14);filter:blur(8px) brightness(.5)}}
+  #vhs div{position:absolute;color:#e8e8e8;font-size:clamp(14px,2.6vw,24px);letter-spacing:.08em;text-shadow:2px 0 #f004,-2px 0 #0ff4,0 0 6px #fff6}
+  #o1{top:calc(14px + env(safe-area-inset-top,0px));right:18px}#o2{bottom:calc(30px + env(safe-area-inset-bottom,0px));right:18px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vig"></div><div id="red"></div><div id="black"></div>
+<div id="intro"><img id="ilogo" alt=""><div id="itx">LEVEL 0</div></div><div id="vhs"><div id="o1">PLAY ▶</div><div id="o2"></div></div><img id="js" alt=""><img id="fk" alt=""><div id="hud"></div><div id="arrow">↑</div><div id="msg"></div>
+<div id="hint">WASD move · Shift sprint · mouse / ←→ look · bring papers to the table in the green room · V vhs filter</div>
+<div id="menu"><h1 id="mt">LEVEL 0</h1>
+  <p id="ms">Endless rooms. Papers keep appearing — grab them and bring them to the table in the green safe room to earn money.<br>Something called <b>Take Care</b> walks these halls. It can’t enter the green room.<br>No events. Just survive.</p>
+  <p style="color:#e8e0a0;margin-top:22px">[ click to enter ]</p>
+</div>
+<script>
+const N=41, PMAX=14, VAL=10, TABLE={x:2.5,y:1.7};
+const rnd=a=>a[Math.random()*a.length|0];
+// footsteps: walk.mp3 while walking, run.mp3 while sprinting (both loop, only while you move)
+const wk=new Audio("models/walk.mp3"),rn=new Audio("models/run.mp3");wk.loop=rn.loop=true;wk.volume=.6;rn.volume=.7;
+const pickupSnd=new Audio("sounds/item_pickup.mp3");pickupSnd.volume=.85;
+function playPickup(){try{pickupSnd.currentTime=0;pickupSnd.play().catch(()=>{})}catch(_){}}
+function steps(on,run){const a=run?rn:wk,b=run?wk:rn;if(!b.paused)b.pause();if(on){if(a.paused)a.play().catch(()=>{})}else if(!a.paused)a.pause()}
+let tc=null,am=null;function startTC(){ctxA();
+  if(!tc){tc=new Audio("sounds/tc.mp3");tc.loop=true;tc.volume=0}
+  if(!am){am=new Audio("sounds/tcam.mp3");am.loop=true;am.volume=.5;am.onerror=()=>{am=null;hum()}}
+  tc.play().catch(()=>{});if(am)am.play().catch(()=>{})}
+let map,px=1.5,py=2.5,pa=0,money=0,carry=0,papers=[],opens=[],E=null;
+let state="menu",stam=1,exh=false,nextPaper=0,spawnE=0,deadUntil=0,msgT=0,nextBeat=0,lf=1,dip=0,started=false,keys={};
+const inRoom=(x,y)=>x<4&&y<4, blk=(x,y)=>x<=4&&y<=4;
+
+// ---------- level ----------
+function bfsFrom(sx,sy,ent){
+  const d=Array.from({length:N},()=>Array(N).fill(-1)),q=[[sx,sy]];d[sy][sx]=0;
+  for(let i=0;i<q.length;i++){const [x,y]=q[i];
+    for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+a,ny=y+b;
+      if(map[ny]&&map[ny][nx]===0&&d[ny][nx]<0&&!(ent&&blk(nx,ny))){d[ny][nx]=d[y][x]+1;q.push([nx,ny])}}}
+  return d;
+}
+function makeLevel(){
+  map=Array.from({length:N},()=>Array(N).fill(1));
+  const st=[[1,1]];map[1][1]=0;
+  while(st.length){
+    const [x,y]=st[st.length-1];
+    const d=[[2,0],[-2,0],[0,2],[0,-2]].sort(()=>Math.random()-.5).filter(([a,b])=>x+a>0&&y+b>0&&x+a<N-1&&y+b<N-1&&map[y+b][x+a]);
+    if(!d.length){st.pop();continue}
+    const [a,b]=d[0];map[y+b/2][x+a/2]=0;map[y+b][x+a]=0;st.push([x+a,y+b]);
+  }
+  for(let i=0;i<110;i++){const x=1+Math.random()*(N-2)|0,y=1+Math.random()*(N-2)|0;
+    if(map[y][x]&&((!map[y][x-1]&&!map[y][x+1])||(!map[y-1][x]&&!map[y+1][x])))map[y][x]=0}
+  // small green safe room (cells 1-3) with one door at (4,2)
+  for(let y=1;y<=4;y++)for(let x=1;x<=4;x++)map[y][x]=inRoom(x,y)?0:1;
+  map[2][4]=0;map[2][5]=0;map[1][5]=0;map[3][5]=0;
+  const d=bfsFrom(2,2);
+  opens=[];
+  for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++){if(map[y][x]===0&&d[y][x]<0)map[y][x]=1;else if(map[y][x]===0&&!blk(x,y))opens.push([x,y])}
+  papers=[];for(let i=0;i<10;i++)spawnPaper(true);placePaintings();
+}
+function spawnPaper(any){
+  for(let t=0;t<40;t++){const [x,y]=rnd(opens);
+    if(any||Math.hypot(x+.5-px,y+.5-py)>6){papers.push({x:x+.5,y:y+.5,ph:Math.random()*6});return}}
+}
+function respawnPlayer(){px=1.5;py=2.5;pa=0;stam=1;exh=false}
+
+// ---------- sprites ----------
+const mk=(w,h)=>{const c=document.createElement("canvas");c.width=w;c.height=h;return c};
+let eBase=null,eNext=0;const sprE=mk(79,215);
+// Take Care: silhouette cut out of the reference photo; edges re-dithered so only he is grainy
+function ditherE(){if(!eBase)return;const g=sprE.getContext("2d"),im=g.createImageData(eBase.width,eBase.height),s=eBase.data,d=im.data;
+  for(let i=0;i<s.length;i+=4){const a=s[i+3];if(a&&a>Math.random()*140){d[i]=s[i];d[i+1]=s[i+1];d[i+2]=s[i+2];d[i+3]=255}}
+  g.putImageData(im,0,0)}
+{const im=new Image();im.onload=()=>{const g=sprE.getContext("2d");g.drawImage(im,0,0);eBase=g.getImageData(0,0,79,215);ditherE()};
+ im.src="data:image/png;base64,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"}
+const sprP=(()=>{const c=mk(48,56),g=c.getContext("2d");
+  const r=g.createRadialGradient(24,28,2,24,28,24);r.addColorStop(0,"rgba(255,250,200,.55)");r.addColorStop(1,"rgba(255,250,200,0)");
+  g.fillStyle=r;g.fillRect(0,0,48,56);
+  g.fillStyle="#f2efe2";g.fillRect(10,8,28,40);g.strokeStyle="#777";g.strokeRect(10,8,28,40);
+  g.strokeStyle="#555";for(let i=0;i<6;i++){g.beginPath();g.moveTo(14,15+i*5.5);g.lineTo(34-(i%2)*4,15+i*5.5);g.stroke()}
+  return c})();
+const sprT=(()=>{const c=mk(72,44),g=c.getContext("2d");
+  g.fillStyle="#f2efe2";g.fillRect(14,0,22,7);g.fillRect(32,2,20,5);
+  g.fillStyle="#6b4a2b";g.fillRect(0,7,72,8);g.fillStyle="#4a3119";g.fillRect(4,15,6,29);g.fillRect(62,15,6,29);
+  return c})();
+
+// ---------- canvas ----------
+const cv=document.getElementById("c"),ctx=cv.getContext("2d");
+let W,H,id,buf,zbuf;
+function resize(){W=Math.min(320,innerWidth);H=Math.max(120,Math.round(W*innerHeight/innerWidth));cv.width=W;cv.height=H;
+  id=ctx.createImageData(W,H);buf=new Uint32Array(id.data.buffer);zbuf=new Float32Array(W)}
+addEventListener("resize",resize);resize();
+const NZ=new Uint8Array(4096);for(let i=0;i<4096;i++)NZ[i]=Math.random()*255;
+// image textures (models/carpet.jpg, models/wall.jpg); a plain procedural texture is used until/unless they load
+const TS=128,TM=127;
+function mkTex(src,base,vr){const t={d:new Uint8ClampedArray(TS*TS*4)};
+  for(let i=0;i<TS*TS;i++){const v=base+Math.random()*vr;t.d[i*4]=v;t.d[i*4+1]=v;t.d[i*4+2]=v*1.03;t.d[i*4+3]=255}
+  const im=new Image();im.onload=()=>{try{const c=mk(TS,TS),g=c.getContext("2d");g.drawImage(im,0,0,TS,TS);t.d=g.getImageData(0,0,TS,TS).data}catch(_){}};
+  im.src=src;return t}
+const TCAR=mkTex("models/carpet.jpg",70,14),TWAL=mkTex("models/wall.jpg",150,8);
+const grn=[0,1].map(()=>{const c=mk(128,128),g=c.getContext("2d"),im=g.createImageData(128,128);for(let i=0;i<im.data.length;i+=4){const v=Math.random()*255;im.data[i]=im.data[i+1]=im.data[i+2]=v;im.data[i+3]=255}g.putImageData(im,0,0);return ctx.createPattern(c,"repeat")});
+let stat=0;
+const pk=(r,g,b)=>0xff000000|((b|0)<<16)|((g|0)<<8)|(r|0);
+
+function drawSprite(img,wx,wy,w,h,lift){
+  const dx=Math.cos(pa),dy=Math.sin(pa),sx=wx-px,sy=wy-py;
+  const tY=sx*dx+sy*dy,tX=sx*-dy+sy*dx;
+  if(tY<.15)return;
+  const scr=W/2*(1+tX/tY),k=H/tY,sh=k*h,sw=k*w;
+  const bottom=H/2+k*(.5-lift),top=bottom-sh,x0=Math.floor(scr-sw/2);
+  for(let x=Math.max(0,x0);x<Math.min(W,x0+sw);x++){
+    if(tY>=zbuf[x])continue;
+    ctx.drawImage(img,Math.min(img.width-1,(x-x0)/sw*img.width|0),0,1,img.height,x,top,1,sh);
+  }
+}
+// ceiling lights sit on every other tile (checkerboard); lightD2 = squared horizontal distance to the nearest one
+const sq=v=>v>0?v*v:0;
+function lightD2(x,y){const fx=Math.floor(x),fy=Math.floor(y),ux=x-fx-.5,uy=y-fy-.5;
+  if(((fx+fy)&1)===0)return ux*ux+uy*uy;
+  const a=1-Math.abs(ux),b=1-Math.abs(uy);return Math.min(a*a+uy*uy,ux*ux+b*b)}
+// ---------- VHS filter (toggle with V) ----------
+// lookup tables (light repeats every 2x2 tiles) so the floor/ceiling loop does no sqrt per pixel
+const LF=new Float32Array(4096),CFL=new Float32Array(4096),NT=new Int8Array(8192);
+for(let i=0;i<64;i++)for(let j=0;j<64;j++){const q=lightD2((j+.5)/32,(i+.5)/32);LF[i*64+j]=.004+1.6*sq(1-Math.sqrt(q+1)/1.6);CFL[i*64+j]=.05+1.2*sq(1-Math.sqrt(q)/1.1)}
+for(let i=0;i<8192;i++)NT[i]=Math.random()*10-5;
+// paintings on roughly 1 in 12 wall faces
+const pf=new Uint8Array(N*N*4).fill(255);
+const PT=(()=>{const out=[],mkP=f=>{const c=mk(64,64),g=c.getContext("2d");f(g);out.push(g.getImageData(0,0,64,64).data)};
+  mkP(g=>{const s=g.createLinearGradient(0,0,0,64);s.addColorStop(0,"#555");s.addColorStop(1,"#bbb");g.fillStyle=s;g.fillRect(0,0,64,64);g.fillStyle="#ddd";g.beginPath();g.arc(46,16,6,0,7);g.fill();g.fillStyle="#222";g.beginPath();g.moveTo(0,64);g.lineTo(0,40);g.lineTo(18,24);g.lineTo(32,42);g.lineTo(46,30);g.lineTo(64,46);g.lineTo(64,64);g.fill()});
+  mkP(g=>{g.fillStyle="#1a1a1a";g.fillRect(0,0,64,64);g.fillStyle="#c9c4b4";g.beginPath();g.ellipse(32,28,13,18,0,0,7);g.fill();g.fillStyle="#111";g.beginPath();g.ellipse(26,24,3,5,0,0,7);g.fill();g.beginPath();g.ellipse(38,24,3,5,0,0,7);g.fill();g.fillRect(25,38,14,2);g.fillStyle="#2a2a2a";g.fillRect(8,50,48,14)});
+  mkP(g=>{g.fillStyle="#8a8578";g.fillRect(0,0,64,64);for(let r=30,i=0;r>2;r-=5,i++){g.fillStyle=i&1?"#c8c2b0":"#222";g.beginPath();g.arc(32,32,r,0,7);g.fill()}});
+  mkP(g=>{g.fillStyle="#6a6a70";g.fillRect(0,0,64,64);g.fillStyle="#222";g.fillRect(0,48,64,16);g.fillStyle="#111";g.fillRect(18,30,28,22);g.beginPath();g.moveTo(14,30);g.lineTo(32,14);g.lineTo(50,30);g.fill();g.fillStyle="#e8c860";g.fillRect(28,38,8,8)});
+  return out})();
+function placePaintings(){pf.fill(255);
+  for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++){if(map[y][x]!==1||blk(x,y))continue;
+    for(const [a,b,f] of [[-1,0,0],[1,0,1],[0,-1,2],[0,1,3]])if(map[y+b][x+a]===0&&!blk(x+a,y+b)&&Math.random()<.08)pf[(y*N+x)*4+f]=Math.random()*4|0}}
+let vhsOn=false,tmp=null,osdNext=0,mvG=0,bobT=0;
+const vhsEl=document.getElementById("vhs"),o2=document.getElementById("o2");
+function toggleVhs(){vhsOn=!vhsOn;vhsEl.style.display=vhsOn?"block":"none";say(vhsOn?"VHS ON":"VHS OFF",performance.now())}
+function vhsPass(now){ // colour bleed, wobbling scanlines, rolling tracking band, washed tape colours, tape noise
+  if(!tmp||tmp.length!==buf.length)tmp=new Uint32Array(buf.length);
+  tmp.set(buf);
+  const band=(now/14)%(H+80)-40;
+  for(let y=0;y<H;y++){
+    const dy=y-band,row=y*W,sc=(y&1)?.9:1;
+    const o=0,bn=dy>0&&dy<24?(1-dy/24):0; // no sideways row shifting, so walls stay straight
+    let cu=0,cv=0,ly=0,first=1,ni=(Math.random()*8192)|0;
+    for(let x=0;x<W;x++){
+      let xi=x+o;xi=xi<0?0:xi>W-1?W-1:xi;
+      const p=tmp[row+xi],r0=p&255,g0=(p>>8)&255,b0=(p>>16)&255,Y=.299*r0+.587*g0+.114*b0,U=b0-Y,V=r0-Y;
+      if(first){cu=U;cv=V;ly=Y;first=0}
+      // like a real tape: colour (chroma) is heavily smeared to the right, brightness only slightly soft
+      cu+=(U-cu)*.07;cv+=(V-cv)*.07;ly+=(Y-ly)*.3;
+      const L=ly*sc+NT[ni=(ni+1)&8191]*(.9+bn*7)+bn*25,R=L+cv*1.5,B=L+cu*1.5,G=(L-.299*R-.114*B)/.587;
+      // lifted, milky blacks (dark grey instead of pure black)
+      const r=18+R*.92,g=18+G*.92,b=20+B*.92;
+      buf[row+x]=pk(r<0?0:r>255?255:r,g<0?0:g>255?255:g,b<0?0:b>255?255:b)
+    }
+  }
+}
+function render(now){
+  const dx=Math.cos(pa),dy=Math.sin(pa),pxl=-dy,pyl=dx,h2=H>>1;
+  for(let y=h2+1;y<H;y++){
+    const d=.5*H/(y-h2),hd=.12*Math.max(0,1-d/6),fog=Math.max(.05,1-d*.09);
+    let fx=px+d*(dx-pxl),fy=py+d*(dy-pyl);const sx=d*2*pxl/W,sy=d*2*pyl/W;
+    const rf=y*W,rc=(H-1-y)*W;
+    for(let x=0;x<W;x++,fx+=sx,fy+=sy){
+      const cx=Math.floor(fx),cy=Math.floor(fy),li=(((fy*32)&63)<<6)|((fx*32)&63),n=NZ[li]/255;
+      const ux=fx-cx,uy=fy-cy,ti=((((fy*TS)&TM)*TS)+((fx*TS)&TM))<<2,T=TCAR.d;
+      const f=Math.min(1,LF[li]+hd*.5)*fog*lf; // light falls from the ceiling in pools
+      if(cx<4&&cy<4)buf[rf+x]=pk(T[ti]*.35*f,T[ti+1]*.8*f,T[ti+2]*.45*f);
+      else buf[rf+x]=pk(T[ti]*f,T[ti+1]*f,T[ti+2]*f);
+      const cf=CFL[li]*lf;let c;
+      if(((cx+cy)&1)===0&&ux>.1&&ux<.9&&uy>.25&&uy<.75)c=(ux>.14&&ux<.86&&uy>.29&&uy<.71)?210+45*lf:140*lf;
+      else if(ux<.04||uy<.04)c=45*cf;
+      else c=(80+n*10)*cf;
+      buf[rc+x]=pk(c,c,c*.97);
+    }
+  }
+  for(let x=0;x<W;x++){
+    const cam=2*x/W-1,rx=dx+pxl*cam,ry=dy+pyl*cam;
+    let mx=px|0,my=py|0,pmx=mx,pmy=my,side=0,stx,sty,sdx,sdy;
+    const ddx=rx?Math.abs(1/rx):1e30,ddy=ry?Math.abs(1/ry):1e30;
+    if(rx<0){stx=-1;sdx=(px-mx)*ddx}else{stx=1;sdx=(mx+1-px)*ddx}
+    if(ry<0){sty=-1;sdy=(py-my)*ddy}else{sty=1;sdy=(my+1-py)*ddy}
+    for(let i=0;i<100;i++){pmx=mx;pmy=my;
+      if(sdx<sdy){sdx+=ddx;mx+=stx;side=0}else{sdy+=ddy;my+=sty;side=1}
+      if(map[my][mx])break}
+    const d=Math.max(.02,side?sdy-ddy:sdx-ddx);zbuf[x]=d;
+    const hx=px+rx*(d-.03),hy=py+ry*(d-.03),hd2=lightD2(hx,hy),wx=side?px+rx*d:py+ry*d,tx=(((wx-Math.floor(wx))*TS)|0)&TM;
+    const g=inRoom(pmx,pmy),T=TWAL.d,sh=(side?.85:1)*Math.max(.05,1-d*.09)*lf,hg=.12*Math.max(0,1-d/6);
+    const mr=g?.35:1,mg=g?.72:1,mb=g?.42:1;
+    const wu=wx-Math.floor(wx),pt=g?255:pf[(my*N+mx)*4+(side?(sty>0?2:3):(stx>0?0:1))];
+    const lh=H/d,top=((H-lh)/2)|0,y0=Math.max(0,top),y1=Math.min(H-1,top+(lh|0));
+    for(let y=y0;y<=y1;y++){const t=(y-top)/lh;
+      // light spills down the wall from the ceiling fixtures, fading toward the floor
+      let k=Math.min(1.3,.003+1.5*sq(1-Math.sqrt(hd2+t*t)/1.7)+hg*.5)*sh;
+      if(t>.92)k*=.5;else if(t>.895)k*=1.3; // baseboard + its lit top edge
+      const ti=((((t*TS)|0)&TM)*TS+tx)<<2;
+      let r=T[ti]*mr,gg=T[ti+1]*mg,bb=T[ti+2]*mb;
+      if(pt<255&&wu>.2&&wu<.8&&t>.2&&t<.72){ // framed painting
+        if(wu>.23&&wu<.77&&t>.23&&t<.69){const pi=(((((t-.23)/.46*64)|0)<<6)+(((wu-.23)/.54*64)|0))<<2,P=PT[pt];r=P[pi];gg=P[pi+1];bb=P[pi+2]}
+        else{r=70;gg=48;bb=30}
+      }
+      buf[y*W+x]=pk(Math.min(255,r*k),Math.min(255,gg*k),Math.min(255,bb*k))}
+  }
+  if(vhsOn)vhsPass(now);
+  ctx.putImageData(id,0,0);
+  const list=[{i:sprT,x:TABLE.x,y:TABLE.y,w:.9,h:.5,l:0,d:Math.hypot(TABLE.x-px,TABLE.y-py)}];
+  for(const p of papers)list.push({i:sprP,x:p.x,y:p.y,w:.3,h:.35,l:.22+Math.sin(now/400+p.ph)*.025,d:Math.hypot(p.x-px,p.y-py)});
+  if(E)list.push({i:sprE,x:E.x,y:E.y,w:.36,h:.98,l:0,d:Math.hypot(E.x-px,E.y-py)});
+  list.sort((a,b)=>b.d-a.d).forEach(o=>{if(o.d<14)drawSprite(o.i,o.x,o.y,o.w,o.h,o.l)});
+  if(stat>0){ // static near Take Care
+    const n=1+(stat*8|0);
+    for(let i=0;i<n;i++){const y=Math.random()*H,hh=2+Math.random()*(6+stat*14);ctx.drawImage(cv,0,y,W,hh,(Math.random()-.5)*60*stat,y,W,hh)}
+    ctx.globalAlpha=stat*.4;ctx.fillStyle=Math.random()<.5?"#fff":"#000";
+    for(let i=0;i<stat*4;i++)ctx.fillRect(0,Math.random()*H,W,1+Math.random()*2);
+    ctx.globalAlpha=1;
+  }
+  // screen grain only appears as static when Take Care is near
+  if(stat>0){ctx.save();ctx.globalCompositeOperation="overlay";ctx.globalAlpha=Math.min(1,stat*.45);ctx.fillStyle=grn[(now/50|0)&1];
+  ctx.translate(Math.random()*128|0,Math.random()*128|0);ctx.fillRect(-128,-128,W+256,H+256);ctx.restore()}
+}
+
+// ---------- audio ----------
+let actx=null,humOn=false;
+function ctxA(){if(!actx){try{actx=new (window.AudioContext||window.webkitAudioContext)()}catch(_){}}if(actx&&actx.resume)actx.resume();return actx}
+function hum(){const a=ctxA();if(!a||humOn)return;humOn=true;const g=a.createGain();g.gain.value=.05;g.connect(a.destination);
+  [60,120,180].forEach((f,i)=>{const o=a.createOscillator();o.type="sine";o.frequency.value=f;const l=a.createGain();l.gain.value=1/(i+1);o.connect(l);l.connect(g);o.start()})}
+function thump(v){const a=actx;if(!a)return;const o=a.createOscillator(),g=a.createGain();o.frequency.value=46;
+  g.gain.setValueAtTime(v,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.2);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.22)}
+function beep(f1,f2){const a=ctxA();if(!a)return;const o=a.createOscillator(),g=a.createGain();
+  o.frequency.setValueAtTime(f1,a.currentTime);o.frequency.exponentialRampToValueAtTime(f2,a.currentTime+.15);
+  g.gain.setValueAtTime(.2,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.2);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.22)}
+
+// ---------- entity: Take Care ----------
+function spawnEntity(){
+  const d=bfsFrom(px|0,py|0,true),c=[];
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++)if(d[y][x]>=14)c.push([x,y]);
+  const p=c.length?rnd(c):rnd(opens);E={x:p[0]+.5,y:p[1]+.5,dist:null,next:0,wander:null,wnext:0};
+}
+function los(){const dx=px-E.x,dy=py-E.y,d=Math.hypot(dx,dy);if(d>16)return false;
+  for(let t=0;t<d;t+=.15)if(map[(E.y+dy/d*t)|0][(E.x+dx/d*t)|0])return false;return true}
+function stepEntity(dt,now){
+  const safe=inRoom(px,py);
+  E.sees=!safe&&los();                      // he only knows where you are while he can see you
+  if(E.sees)E.last=[px|0,py|0];
+  if(now>E.next){
+    let t=E.last;
+    if(!t){if(!E.wander||now>E.wnext||((E.x|0)===E.wander[0]&&(E.y|0)===E.wander[1])){E.wander=rnd(opens);E.wnext=now+14000}t=E.wander}
+    E.dist=bfsFrom(t[0],t[1],true);E.next=now+(E.sees?200:400);
+  }
+  const cx=E.x|0,cy=E.y|0;let best=null,bd=E.dist[cy][cx];
+  if(E.last&&!E.sees&&bd===0){E.last=null;E.next=0}   // reached the last place he saw you, lost you
+  for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=cx+a,ny=cy+b;
+    if(map[ny]&&map[ny][nx]===0&&E.dist[ny][nx]>=0&&E.dist[ny][nx]<bd){bd=E.dist[ny][nx];best=[nx+.5,ny+.5]}}
+  if(E.sees&&!best)best=[px,py];
+  if(!best)return;
+  const ex=best[0]-E.x,ey=best[1]-E.y,l=Math.hypot(ex,ey)||1,s=Math.min(l,(E.sees?3.1:E.last?2.6:1.7)*dt);
+  E.x+=ex/l*s;E.y+=ey/l*s;
+}
+
+// ---------- input / flow ----------
+addEventListener("keydown",e=>{keys[e.code]=1;if(e.code==="KeyV"&&!e.repeat)toggleVhs();if(e.code.startsWith("Arrow"))e.preventDefault()});
+addEventListener("keyup",e=>keys[e.code]=0);
+addEventListener("mousemove",e=>{if(document.pointerLockElement===cv&&state==="play")pa+=e.movementX*.0025});
+const menu=document.getElementById("menu"),black=document.getElementById("black"),msg=document.getElementById("msg"),hud=document.getElementById("hud"),redEl=document.getElementById("red"),arrow=document.getElementById("arrow");
+hud.innerHTML='<div id="t"></div><div id="bar"><i></i></div>';
+const tEl=document.getElementById("t"),barI=document.querySelector("#bar i");
+// intro: models/logo.jpg fades in over models/logo.mp3, then the game begins
+const introEl=document.getElementById("intro"),ilogo=document.getElementById("ilogo"),itx=document.getElementById("itx"),logoSnd=new Audio("models/logo.mp3");
+let introT=0;
+ilogo.onerror=()=>{ilogo.style.display="none";itx.style.display="block"};ilogo.src="models/logo.jpg";
+function endIntro(now){introEl.style.display="none";logoSnd.pause();state="play";startTC();spawnE=now+8000;nextPaper=now+3000;last=now}
+menu.onclick=()=>{
+  try{cv.requestPointerLock()}catch(_){}
+  menu.style.display="none";
+  if(!started){started=true;makeLevel();respawnPlayer();E=null;introT=performance.now();state="intro";
+    logoSnd.currentTime=0;logoSnd.volume=1;logoSnd.play().catch(()=>{});
+    introEl.style.display="flex";introEl.classList.remove("go");void introEl.offsetWidth;introEl.classList.add("go");return}
+  startTC();state="play";last=performance.now();
+};
+document.addEventListener("pointerlockchange",()=>{if(!document.pointerLockElement&&state==="play"){if(tc)tc.pause();if(am)am.pause();wk.pause();rn.pause();state="menu";document.getElementById("mt").textContent="PAUSED";menu.style.display="flex"}});
+function say(t,now){msg.textContent=t;msg.style.opacity=1;msgT=now+2600}
+// real jumpscare (Take Care catches you) + rare fake jumpscare (img1-3 flashing)
+const jsEl=document.getElementById("js"),fkEl=document.getElementById("fk");
+let jsBad=false;jsEl.onerror=()=>{jsBad=true};jsEl.src="models/jumpscare.jpg";
+const jsSnd=new Audio("models/jumpscare.mp3");
+function jumpscare(){
+  if(!jsBad){jsEl.style.display="block";let n=0;const iv=setInterval(()=>{
+    jsEl.style.transform=`translate(${(Math.random()-.5)*40}px,${(Math.random()-.5)*40}px) scale(${1.05+Math.random()*.12})`;
+    if(++n>30){clearInterval(iv);jsEl.style.display="none"}},60)}
+  try{jsSnd.currentTime=0;jsSnd.volume=1;jsSnd.play().catch(()=>{})}catch(_){}
+}
+const fkImgs=["img1","img2","img3"].map(n=>{const i=new Image();i.onerror=()=>{i.bad=1};i.src=`models/${n}.jpg`;return i});
+let nextFake=0,fakeUntil=0,fakeSw=0,fakeI=0,fkOk=[];
+function fakeScare(now){fkOk=fkImgs.filter(i=>!i.bad&&i.complete&&i.naturalWidth);if(fkOk.length){fakeUntil=now+700;fakeSw=0}}
+function die(now){
+  state="dead";deadUntil=now+4200;carry=0;E=null;jumpscare();wk.pause();rn.pause();
+  black.textContent="TAKE CARE CAUGHT YOU — you dropped the papers you were carrying";black.style.display="flex";
+}
+
+// ---------- loop ----------
+let last=performance.now();
+function loop(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;
+  let near=99;
+  if(state==="play"){
+    if(keys.ArrowLeft)pa-=2.2*dt;if(keys.ArrowRight)pa+=2.2*dt;
+    const fw=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0),st=(keys.KeyD?1:0)-(keys.KeyA?1:0);
+    const moving=fw||st,run=(keys.ShiftLeft||keys.ShiftRight)&&moving&&!exh;steps(!!moving,!!run);mvG=moving?(run?2:1):0;
+    if(run){stam-=dt/3.5;if(stam<=0){stam=0;exh=true}}else{stam=Math.min(1,stam+dt/6);if(exh&&stam>.25)exh=false}
+    const sp=(run?4.6:3.3)*dt,c=Math.cos(pa),s=Math.sin(pa),mx=(c*fw-s*st)*sp,my=(s*fw+c*st)*sp,m=.22;
+    if(!map[py|0][(px+mx+Math.sign(mx)*m)|0])px+=mx;
+    if(!map[(py+my+Math.sign(my)*m)|0][px|0])py+=my;
+
+    for(let i=papers.length-1;i>=0;i--){const p=papers[i];
+      if(Math.hypot(p.x-px,p.y-py)<.55){papers.splice(i,1);carry++;playPickup()}}
+    if(now>nextPaper){if(papers.length<PMAX)spawnPaper(false);nextPaper=now+3500}
+    if(carry>0&&Math.hypot(TABLE.x-px,TABLE.y-py)<1.4){
+      const g=carry*VAL;money+=g;say(`TURNED IN ${carry} PAPER${carry>1?"S":""}  +$${g}`,now);carry=0;beep(520,1040)}
+
+    if(!E&&now>spawnE)spawnEntity();
+    if(E){
+      stepEntity(dt,now);near=Math.hypot(E.x-px,E.y-py);
+      if(near<.55&&!inRoom(px,py))die(now);
+    }
+    // flicker gets worse as it approaches
+    if(now>dip&&Math.random()<.004+(near<10?(10-near)*.006:0))dip=now+60+Math.random()*140;
+    lf=now<dip?.35+Math.random()*.2:.96+.04*Math.sin(now/90);
+    if(now>nextBeat&&near<14){thump(.5);setTimeout(()=>thump(.35),150);nextBeat=now+Math.max(350,1100*near/14)}
+    let a=Math.atan2(2.5-py,2.5-px)-pa;arrow.style.transform=`rotate(${a+Math.PI/2}rad)`;
+    arrow.style.display=inRoom(px,py)?"none":"block";
+  }else if(state==="dead"&&now>deadUntil){
+    respawnPlayer();black.style.display="none";state="play";spawnE=now+6000;lf=1;
+  }
+  if(tc)tc.volume=Math.pow(Math.max(0,1-near/14),1.5);
+  stat=state==="play"&&near<10?(1-near/10):0;
+  // camera shake: head bob while walking (bigger when sprinting) + violent shake as Take Care closes in
+  if(state!=="play")mvG=0;else bobT+=dt*(mvG===2?14:9)*(mvG?1:0);
+  {const ba=mvG===2?7:mvG?3.5:0,sk=stat*stat*12;
+   cv.style.transform=`translate(${Math.cos(bobT*.5)*ba*.6+(Math.random()-.5)*sk}px,${Math.abs(Math.sin(bobT))*ba+(Math.random()-.5)*sk}px) rotate(${Math.sin(bobT*.5)*(mvG?.5:0)+(Math.random()-.5)*stat*1.4}deg) scale(1.06)`}
+  if(vhsOn&&now>osdNext){const d=new Date();o2.textContent=d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}).toUpperCase()+"  "+d.toLocaleTimeString("en-US");osdNext=now+1000}
+  if(state==="intro"){const rem=introT+6500-now;logoSnd.volume=Math.max(0,Math.min(1,rem/1500));if(rem<=0)endIntro(now)}
+  if(E&&now>eNext){ditherE();eNext=now+90}
+  if(state==="play"&&now>nextFake){if(nextFake)fakeScare(now);nextFake=now+90000+Math.random()*180000}
+  if(state==="play"&&now<fakeUntil){if(now>fakeSw){fkEl.src=fkOk[fakeI++%fkOk.length].src;fkEl.style.display="block";fakeSw=now+60}}
+  else if(fkEl.style.display==="block")fkEl.style.display="none";
+  if(map&&started)render(now);
+  redEl.style.opacity=state==="play"&&near<7?(1-near/7)*.4*(.6+.4*Math.sin(now/90)):0;
+  tEl.textContent=`$${money}   ·   CARRYING ${carry}`+(E&&near<9&&!inRoom(px,py)?"   ·   TAKE CARE IS CLOSE":inRoom(px,py)?"   ·   SAFE":"");
+  barI.style.width=(stam*100)+"%";barI.style.background=exh?"#f66":"#9f9";
+  if(now>msgT)msg.style.opacity=0;
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

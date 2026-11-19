@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SURVIVAL</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:"Courier New",monospace;color:#d33;user-select:none}
+  canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+  #hud{position:fixed;left:14px;top:calc(10px + env(safe-area-inset-top,0px));font-size:14px;line-height:1.55;color:#8b8;text-shadow:0 0 6px #040;white-space:pre;pointer-events:none;z-index:2}
+  #tm{position:fixed;right:16px;top:calc(8px + env(safe-area-inset-top,0px));font-size:34px;letter-spacing:.1em;color:#cde;text-shadow:0 0 10px #000;pointer-events:none;z-index:2}
+  #msg{position:fixed;left:0;right:0;bottom:18%;text-align:center;font-size:20px;letter-spacing:.14em;color:#eee;text-shadow:0 0 10px #000,0 0 4px #000;pointer-events:none;z-index:2;padding:0 12px}
+  #hint{position:fixed;left:12px;bottom:calc(8px + env(safe-area-inset-bottom,0px));font-size:11px;color:#555;pointer-events:none;z-index:2}
+  #menu{position:fixed;inset:0;background:#000e;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;z-index:5}
+  #menu h1{font-size:clamp(34px,9vw,92px);letter-spacing:.25em;margin:0 0 14px;color:#d11;text-shadow:0 0 22px #600,3px 0 #0ff3,-3px 0 #f0f3}
+  #menu p{max-width:640px;color:#aaa;line-height:1.55;margin:5px;font-size:15px}
+  #menu small{color:#666;margin-top:12px;max-width:560px}
+  #go{margin-top:24px;background:#1a0808;border:1px solid #a22;color:#e55;font:inherit;font-size:20px;padding:12px 44px;cursor:pointer;letter-spacing:.2em}
+  #go:hover{background:#2a1010;border-color:#f33;color:#f88}
+  #menu a{margin-top:18px;color:#555;font-size:13px;letter-spacing:.2em;text-decoration:none}
+  #menu a:hover{color:#c33}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas><div id="hud"></div><div id="tm"></div><div id="msg"></div>
+<div id="hint">WASD move · Shift sprint · E hide in locker · F flare · Q adrenaline · L flashlight</div>
+<div id="menu">
+  <h1 id="mt">SURVIVAL</h1>
+  <p id="ms">A dead research facility. The lockdown timer is already running.<br>
+  Find <b>5 access cards</b> scattered through the dark halls — each one buys you <b>+20 seconds</b> — then run for the glowing <b>green exit</b> before the clock hits zero.<br>
+  Something black and wrong walks these corridors. The closer it gets, the more your screen fails.<br>
+  Hide in <b>lockers</b> and throw <b>flares</b>. The layout is different every run.</p>
+  <button id="go">ENTER</button>
+  <small>Contains flashing images, loud sounds and jumpscares. Sound files go in <b>game/sounds/</b>.</small>
+  <a href="../index.html">← MAIN MENU</a>
+</div>
+<script>
+// ================= basics =================
+const $=i=>document.getElementById(i),cv=$("c"),ctx=cv.getContext("2d"),hud=$("hud"),tm=$("tm"),msgEl=$("msg"),menu=$("menu");
+const rnd=a=>a[Math.random()*a.length|0],R=(a,b)=>a+Math.random()*(b-a),cl=(v,a,b)=>v<a?a:v>b?b:v;
+const hs=n=>{n=Math.sin(n*12.9898)*43758.5453;return n-Math.floor(n)};
+let W,H,zb;const COL=3;
+function resize(){const k=Math.min(1,900/innerWidth);W=innerWidth*k|0;H=innerHeight*k|0;cv.width=W;cv.height=H;zb=new Float32Array(W+8)}
+addEventListener("resize",resize);resize();
+const G=5,RS=10,N=G*RS+1,D=[[1,0],[-1,0],[0,1],[0,-1]],TF=1,WALL_H=1.0,ITEMS=5,START_TIME=360,BONUS=20;
+
+// ================= SOUND FILES — every sound in the game comes from one of these =================
+// name: [file path (relative to this page, i.e. inside game/), volume, loops?]
+const SOUND_FILES={
+  ambient:       ["sounds/ambient.mp3",       .45,1],  // constant background drone
+  stalker_near:  ["sounds/stalker_near.mp3",   1,1],  // loops; audible only as the black figure gets close
+  heartbeat:     ["sounds/heartbeat.mp3",     .8],    // when something is near
+  footstep:      ["sounds/footstep.mp3",      .35],   // walking
+  run:           ["sounds/run.mp3",           .5],    // sprinting
+  item_pickup:   ["sounds/item_pickup.mp3",   .8],    // access card collected
+  battery:       ["sounds/battery.mp3",       .7],    // battery collected
+  pickup:        ["sounds/pickup.mp3",        .7],    // adrenaline / flare collected
+  adrenaline:    ["sounds/adrenaline.mp3",    .8],    // adrenaline used
+  flare:         ["sounds/flare.mp3",         .8],    // flare thrown
+  locker:        ["sounds/locker.mp3",        .7],    // hiding in / leaving a locker
+  flashlight:    ["sounds/flashlight.mp3",    .5],    // flashlight click
+  stalker_growl: ["sounds/stalker_growl.mp3", .9],    // the black figure growls
+  jumpscare:     ["sounds/jumpscare.mp3",      1],    // every jumpscare
+  whisper:       ["sounds/whisper.mp3",       .7],    // whisper event
+  blackout:      ["sounds/blackout.mp3",      .8],    // lights die
+  timer_warning: ["sounds/timer_warning.mp3", .6],    // beeps in the last 30 seconds
+  exit_open:     ["sounds/exit_open.mp3",     .8],    // all cards found, exit unlocks
+  win:           ["sounds/win.mp3",           .9],    // you escaped
+  time_up:       ["sounds/time_up.mp3",       .9]     // the countdown ran out
+};
+const SFX={};
+for(const k in SOUND_FILES){const[f,v,lp]=SOUND_FILES[k],a=new Audio(f);a.preload="auto";a.loop=!!lp;a.volume=lp?0:v;
+  SFX[k]={a,v,lp,ok:true};a.onerror=()=>{SFX[k].ok=false;console.warn("Missing sound file: game/"+f)}}
+const snd=(k,vol=1)=>{const s=SFX[k];if(!s||!s.ok||s.lp)return;try{const c=s.a.cloneNode();c.volume=cl(s.v*vol,0,1);c.play().catch(()=>{})}catch(e){}};
+const loopVol=(k,v)=>{const s=SFX[k];if(s&&s.ok)s.a.volume=cl(s.v*v,0,1)};
+const loopOn=k=>{const s=SFX[k];if(s&&s.ok){s.a.currentTime=0;s.a.play().catch(()=>{})}};
+const loopOff=k=>{const s=SFX[k];if(s&&s.ok)s.a.pause()};
+
+// ================= sprite art (drawn once) =================
+const mk=(w,h,f)=>{const c=document.createElement("canvas");c.width=w;c.height=h;f(c.getContext("2d"));return c};
+const rc=(g,c,x,y,w,h)=>{g.fillStyle=c;g.fillRect(x,y,w,h)};
+const glow=(g,x,y,r,c)=>{const q=g.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,c);q.addColorStop(1,"rgba(0,0,0,0)");g.fillStyle=q;g.fillRect(x-r,y-r,r*2,r*2)};
+const T={
+  crate:mk(64,64,g=>{rc(g,"#5a4022",6,18,52,44);rc(g,"#3a2810",6,18,52,5);rc(g,"#3a2810",30,18,4,44)}),
+  locker:mk(64,64,g=>{rc(g,"#34404e",12,2,40,60);rc(g,"#161c22",31,2,2,60);for(let i=0;i<3;i++){rc(g,"#161c22",16,8+i*4,12,2);rc(g,"#161c22",36,8+i*4,12,2)}rc(g,"#999",26,32,2,7);rc(g,"#999",36,32,2,7)}),
+  desk:mk(64,64,g=>{rc(g,"#5a4026",2,36,60,6);rc(g,"#2c2010",4,42,4,22);rc(g,"#2c2010",56,42,4,22);rc(g,"#111",18,8,28,24);rc(g,"#1a7a9a",20,10,24,18);
+    rc(g,"#8ff",22,13,14,1);rc(g,"#8ff",22,17,18,1);rc(g,"#8ff",22,21,10,1);rc(g,"#222",30,32,4,4);rc(g,"#222",22,34,20,2);glow(g,32,20,22,"rgba(60,200,255,.35)")}),
+  term:mk(64,64,g=>{rc(g,"#262a30",14,2,36,60);rc(g,"#031",18,6,28,22);for(let i=0;i<4;i++)rc(g,"#2f6",21,9+i*5,10+Math.random()*14,1);
+    rc(g,"#111",18,32,28,10);for(let i=0;i<4;i++)rc(g,rnd(["#f22","#2f4","#fa0"]),20+i*7,46,4,4);glow(g,32,17,22,"rgba(40,255,100,.35)")}),
+  chair:mk(64,64,g=>{rc(g,"#202020",20,6,24,26);rc(g,"#2a2a2a",16,32,32,6);rc(g,"#111",30,38,4,20);rc(g,"#111",16,58,32,4)}),
+  shelf:mk(64,64,g=>{rc(g,"#4a4d52",4,2,56,60);for(let y=6;y<60;y+=18){rc(g,"#1c1c1c",6,y+14,52,3);for(let x=8;x<54;x+=10)rc(g,rnd(["#7a5a3a","#5a6a7a","#8a8a7a"]),x,y+2+Math.random()*4,8,10)}}),
+  card:mk(32,32,g=>{glow(g,16,16,15,"rgba(60,220,255,.6)");rc(g,"#dde",9,11,14,10);rc(g,"#f0c",9,14,14,3);rc(g,"#357",11,18,5,2)}),
+  bat:mk(32,32,g=>{glow(g,16,16,15,"rgba(255,220,60,.5)");rc(g,"#222",11,8,10,17);rc(g,"#fd0",11,12,10,7);rc(g,"#aaa",14,6,4,3)}),
+  adr:mk(32,32,g=>{glow(g,16,16,15,"rgba(60,255,120,.5)");rc(g,"#cde",13,8,6,14);rc(g,"#2f7",13,12,6,7);rc(g,"#aaa",15,22,2,5);rc(g,"#aaa",11,8,10,2)}),
+  flr:mk(32,32,g=>{glow(g,16,16,15,"rgba(255,50,30,.55)");rc(g,"#c22",12,10,8,15);rc(g,"#fff",12,10,8,3)}),
+  flit:mk(64,64,g=>{glow(g,32,32,32,"rgba(255,90,40,.9)");glow(g,32,32,10,"rgba(255,240,200,1)")})
+};
+// the black glitching figure (redrawn every frame)
+const mc=mk(96,192,()=>{}),mg=mc.getContext("2d");
+function fig(g,col,ox,t,j){
+  g.fillStyle=g.strokeStyle=col;g.lineCap=g.lineJoin="round";
+  const sw=Math.sin(t/260)*6,tw=Math.sin(t/700)*5,cx=48+ox;
+  g.lineWidth=4;g.beginPath();g.moveTo(cx,58);g.quadraticCurveTo(cx+tw*2,40,cx+tw*3,26);g.stroke();
+  g.beginPath();g.ellipse(cx+tw*3+j*.3,20,7,17,tw*.05,0,6.3);g.fill();
+  g.beginPath();g.moveTo(cx-18,60);g.quadraticCurveTo(cx,50,cx+18,60);g.lineTo(cx+6,120);g.lineTo(cx-6,120);g.closePath();g.fill();
+  g.lineWidth=4;
+  g.beginPath();g.moveTo(cx-17,62);g.lineTo(cx-34+sw,116);g.lineTo(cx-22+sw*1.6,178+j);g.stroke();
+  g.beginPath();g.moveTo(cx+17,62);g.lineTo(cx+34-sw,116);g.lineTo(cx+22-sw*1.6,178-j);g.stroke();
+  g.lineWidth=1.5;
+  for(const k of[-5,0,5]){g.beginPath();g.moveTo(cx-22+sw*1.6,178+j);g.lineTo(cx-22+sw*1.6+k,191);g.stroke();g.beginPath();g.moveTo(cx+22-sw*1.6,178-j);g.lineTo(cx+22-sw*1.6+k,191);g.stroke()}
+  g.lineWidth=2;
+  g.beginPath();g.moveTo(cx-7,84);g.lineTo(cx-27-sw,74);g.lineTo(cx-21-sw,54);g.stroke();
+  g.beginPath();g.moveTo(cx+7,84);g.lineTo(cx+27+sw,74);g.lineTo(cx+21+sw,54);g.stroke();
+  g.lineWidth=5;
+  g.beginPath();g.moveTo(cx-5,118);g.lineTo(cx-16-sw,148);g.lineTo(cx-6-sw,189);g.stroke();
+  g.beginPath();g.moveTo(cx+5,118);g.lineTo(cx+16+sw,148);g.lineTo(cx+6+sw,189);g.stroke();
+}
+function drawMon(t,s){
+  const g=mg,gl=3+s*10,cols=["#f00","#0ff","#f0f","#fff","#ff0","#0f0"];g.clearRect(0,0,96,192);
+  g.globalAlpha=.6;fig(g,rnd(cols),-gl*(.5+Math.random()),t,Math.random()*gl);fig(g,rnd(cols),gl*(.5+Math.random()),t,Math.random()*gl);
+  g.globalAlpha=1;fig(g,"#000",0,t,(Math.random()-.5)*gl);
+  const hx=48+Math.sin(t/700)*15;g.fillStyle="#fff";
+  if(Math.random()<.85){g.fillRect(hx-4,14,2,2);g.fillRect(hx+2,14,2,2)}
+  if(Math.random()<.5)g.fillRect(hx-.5,23,1.2,10+Math.random()*8);
+  if(Math.random()<.08){g.fillStyle="#000";g.beginPath();g.ellipse(hx+(Math.random()-.5)*34,14+Math.random()*12,7,17,0,0,6.3);g.fill()}
+  for(let i=0,n=2+(Math.random()*(3+s*8)|0);i<n;i++){const y=Math.random()*192,h=2+Math.random()*16;g.drawImage(mc,0,y,96,h,(Math.random()-.5)*(10+s*40),y,96,h)}
+  g.fillStyle="#fff";for(let i=0;i<8;i++)if(Math.random()<.5){const a=Math.random()*6.28,d=14+Math.random()*30;g.globalAlpha=.4+Math.random()*.6;g.fillRect(hx+Math.cos(a)*d,20+Math.sin(a)*d,2,2)}
+  g.globalAlpha=1;if(Math.random()<.3)g.clearRect(0,Math.random()*192,96,6+Math.random()*18);
+}
+const SPR={0:[T.crate,.5,1,0],1:[T.locker,.95,1,0],2:[T.desk,.5,1,.35],9:[T.term,.85,1,.4],10:[T.chair,.45,1,0],11:[T.shelf,.9,1,0],
+  8:[T.card,.25,1,.7],3:[T.bat,.22,1,.55],4:[T.adr,.22,1,.55],5:[T.flr,.2,1,.55],7:[T.flit,.5,1,1],s:[mc,1.2,.5,.3]};
+const BLOCK=new Set([0,1,2,9,11]);
+const nz=mk(160,90,()=>{}),nzx=nz.getContext("2d");
+
+// ================= state =================
+let map,blk,ents,mons,opens,state="menu",now=0;
+let px,py,pa,bob=0,hidden=null,prev=null,hp,batt,stam,flares,adr,got,powered,fl,tired,tStart,timeLeft;
+let blackout,nextEv,adrUntil,flare,flareF,pf,pfAt,pfCell,msgT,whisper,whisperTxt,hit,js,nextBeat,nextGrowl,nextWarn,stepT,sprinting,why,fear,sg,dS;
+const keys={};
+
+// ================= random facility generation (new every run) =================
+const solid=(x,y)=>{const t=map[y|0][x|0];return(t&&!(t===3&&powered))||blk[y|0][x|0]};
+function bfs(sx,sy){
+  const d=Array.from({length:N},()=>Array(N).fill(-1)),q=[[sx,sy]];d[sy][sx]=0;
+  for(let i=0;i<q.length;i++){const[x,y]=q[i];for(const[a,b]of D){const nx=x+a,ny=y+b;
+    if(nx>=0&&ny>=0&&nx<N&&ny<N&&!map[ny][nx]&&!blk[ny][nx]&&d[ny][nx]<0){d[ny][nx]=d[y][x]+1;q.push([nx,ny])}}}
+  return d;
+}
+function gen(){
+  map=Array.from({length:N},()=>Array(N).fill(1));blk=Array.from({length:N},()=>Array(N).fill(0));ents=[];mons=[];opens=[];
+  for(let gy=0;gy<G;gy++)for(let gx=0;gx<G;gx++)for(let y=1;y<RS;y++)for(let x=1;x<RS;x++)map[gy*RS+y][gx*RS+x]=0;
+  const door=(a,b,c,d)=>{
+    if(a!==c){const wx=Math.max(a,c)*RS,y=b*RS+2+(Math.random()*7|0);map[y][wx]=map[y+1][wx]=0}
+    else{const wy=Math.max(b,d)*RS,x=a*RS+2+(Math.random()*7|0);map[wy][x]=map[wy][x+1]=0}
+  };
+  const seen=new Set();
+  (function dfs(a,b){seen.add(a+","+b);for(const[dx,dy]of[...D].sort(()=>Math.random()-.5)){const c=a+dx,d=b+dy;
+    if(c<0||d<0||c>=G||d>=G||seen.has(c+","+d))continue;door(a,b,c,d);dfs(c,d)}})(0,0);
+  for(let i=0;i<12;i++){const a=Math.random()*G|0,b=Math.random()*G|0,[dx,dy]=rnd(D),c=a+dx,d=b+dy;if(c>=0&&d>=0&&c<G&&d<G)door(a,b,c,d)}
+  const add=(t,x,y)=>{if(map[y][x]||blk[y][x])return;ents.push({x:x+.5,y:y+.5,t});if(BLOCK.has(t))blk[y][x]=1};
+  const free=(x,y)=>!map[y][x]&&!blk[y][x]&&!ents.some(o=>(o.x|0)===x&&(o.y|0)===y);
+  const put=(t,gx,gy)=>{let n=0,x,y;do{x=gx*RS+2+(Math.random()*8|0);y=gy*RS+2+(Math.random()*8|0);n++}while(!free(x,y)&&n<60);add(t,x,y)};
+  const rooms=[];for(let gy=0;gy<G;gy++)for(let gx=0;gx<G;gx++)rooms.push([gx,gy]);
+  const TY=["server","server","office","office","office","lab","storage","storage","hall"];
+  for(const[gx,gy]of rooms){
+    const X=gx*RS,Y=gy*RS,ty=(gx||gy)?rnd(TY):"start";
+    if(ty!=="start"&&ty!=="server"&&Math.random()<.12)for(let b=3;b<=7;b++)map[Y+b][X+5]=1;   // random partition
+    if(ty==="server"){for(const b of[3,7]){const g=3+(Math.random()*4|0);for(let a=3;a<=7;a++)if(a!==g&&a!==g+1)map[Y+b][X+a]=2}add(9,X+5,Y+5)}
+    else if(ty==="office"){for(const[a,b]of[[3,3],[7,3],[3,7],[7,7],[5,5]])if(Math.random()<.8){add(2,X+a,Y+b);add(10,X+a,Y+b+1)}}
+    else if(ty==="lab"){for(const a of[3,5,7])for(const b of[3,7])if(Math.random()<.65)add(9,X+a,Y+b);add(2,X+5,Y+5)}
+    else if(ty==="storage"){for(let i=0;i<5;i++)add(11,X+3+(Math.random()*5|0),Y+3+(Math.random()*5|0));for(let i=0;i<3;i++)add(0,X+3+(Math.random()*5|0),Y+3+(Math.random()*5|0))}
+    else if(ty==="hall"){for(const[a,b]of[[3,3],[7,7],[3,7],[7,3]])if(Math.random()<.6){map[Y+b][X+a]=map[Y+b][X+a+1]=map[Y+b+1][X+a]=map[Y+b+1][X+a+1]=1}}
+    if(Math.random()<.6){const x=Math.random()<.5?X+1:X+9,y=Y+2+(Math.random()*7|0);add(1,x,y)}
+  }
+  map[45][N-1]=map[46][N-1]=3;                         // exit gate
+  const pool=rooms.filter(([a,b])=>a||b).sort(()=>Math.random()-.5);
+  for(let i=0;i<ITEMS;i++)put(8,pool[i][0],pool[i][1]);   // access cards: one per room
+  const any=()=>rnd(pool);
+  for(let i=0;i<5;i++){const[a,b]=any();put(3,a,b)}
+  for(let i=0;i<3;i++){const[a,b]=any();put(4,a,b)}
+  for(let i=0;i<5;i++){const[a,b]=any();put(5,a,b)}
+  for(let k=0;k<6;k++){                                     // never let furniture seal a doorway
+    const d=bfs(5,5);let again=false;
+    ents=ents.filter(o=>{if(!BLOCK.has(o.t))return true;const x=o.x|0,y=o.y|0;
+      for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){const nx=x+a,ny=y+b;if(map[ny]&&map[ny][nx]===0&&!blk[ny][nx]&&d[ny][nx]<0){blk[y][x]=0;again=true;return false}}return true});
+    if(!again)break;
+  }
+  for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++)if(!map[y][x]&&!blk[y][x])opens.push([x,y]);
+  const far=opens.filter(([x,y])=>Math.hypot(x-5.5,y-5.5)>35),[sx,sy]=rnd(far);
+  mons.push({t:"s",x:sx+.5,y:sy+.5,chase:0,tgt:null,field:null,rt:0,sniff:0});
+}
+
+// ================= raycasting =================
+function cast(a){
+  const dx=Math.cos(a),dy=Math.sin(a);let mx=px|0,my=py|0;const ddx=Math.abs(1/dx),ddy=Math.abs(1/dy);let sx,sy,sdx,sdy;
+  if(dx<0){sx=-1;sdx=(px-mx)*ddx}else{sx=1;sdx=(mx+1-px)*ddx}
+  if(dy<0){sy=-1;sdy=(py-my)*ddy}else{sy=1;sdy=(my+1-py)*ddy}
+  let side=0;for(let i=0;i<110;i++){if(sdx<sdy){sdx+=ddx;mx+=sx;side=0}else{sdy+=ddy;my+=sy;side=1}if(mx<0||my<0||mx>=N||my>=N||map[my][mx])break}
+  const d=side?sdy-ddy:sdx-ddx;
+  return{d,side,hit:side?px+d*dx:py+d*dy,t:(map[my]&&map[my][mx])||1,mx,my};
+}
+
+// ================= jumpscares =================
+function startJump(fatal,dur){js={t0:now,dur:dur||(fatal?1500:380),fatal};snd("jumpscare");hit=1}
+function die(reason){if(state!=="play")return;state="dying";why=reason;hidden=null;startJump(true)}
+function drawFace(){
+  const g=ctx,k=cl((now-js.t0)/js.dur,0,1);
+  g.setTransform(1,0,0,1,0,0);g.fillStyle=Math.random()<.35?"#500":"#000";g.fillRect(0,0,W,H);
+  const sc=.55+k*(js.fatal?1.1:.7)+(Math.random()-.5)*.08,cx=W/2+(Math.random()-.5)*W*.035,cy=H*.5+(Math.random()-.5)*H*.035,rw=H*.4*sc,rh=H*.56*sc;
+  const q=g.createRadialGradient(cx,cy-rh*.2,rh*.1,cx,cy,rh);q.addColorStop(0,"#eee8da");q.addColorStop(1,"#6a645a");
+  g.fillStyle=q;g.beginPath();g.ellipse(cx,cy,rw,rh,0,0,6.3);g.fill();
+  g.fillStyle="#000";for(const s of[-1,1]){g.beginPath();g.ellipse(cx+s*rw*.38,cy-rh*.16,rw*.2,rh*.17,s*.2,0,6.3);g.fill()}
+  g.fillStyle="#fff";for(const s of[-1,1])g.fillRect(cx+s*rw*.38+(Math.random()-.5)*rw*.1,cy-rh*.16+(Math.random()-.5)*rh*.05,3,3);
+  const my=cy+rh*.42,mh=rh*(.22+.1*Math.abs(Math.sin(now/45))),mw=rw*.62;
+  g.fillStyle="#000";g.beginPath();g.ellipse(cx,my,mw,mh,0,0,6.3);g.fill();
+  g.fillStyle="#f2eede";for(let i=-5;i<=5;i++){const x=cx+i*mw*.17;g.beginPath();g.moveTo(x-6*sc,my-mh*.9);g.lineTo(x+6*sc,my-mh*.9);g.lineTo(x,my-mh*.9+rh*.1);g.fill();
+    g.beginPath();g.moveTo(x-6*sc,my+mh*.9);g.lineTo(x+6*sc,my+mh*.9);g.lineTo(x,my+mh*.9-rh*.1);g.fill()}
+  g.strokeStyle="rgba(40,0,0,.7)";g.lineWidth=2;for(let i=0;i<7;i++){g.beginPath();const x=cx+(Math.random()-.5)*rw*1.6,y=cy+(Math.random()-.5)*rh*1.6;g.moveTo(x,y);g.lineTo(x+(Math.random()-.5)*60,y+(Math.random()-.5)*60);g.stroke()}
+  for(let i=0;i<6;i++){const y=Math.random()*H,h=4+Math.random()*30;g.drawImage(cv,0,y,W,h,(Math.random()-.5)*W*.1,y,W,h)}
+}
+
+// ================= game flow =================
+const msg=(t,ms)=>{msgEl.textContent=t;msgT=now+(ms||2500)};
+const fmt=s=>{s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
+function start(){
+  gen();px=5.5;py=5.5;pa=0;hp=100;batt=100;stam=100;flares=1;adr=0;got=0;powered=false;fl=true;tired=false;hidden=null;prev=null;
+  blackout=0;adrUntil=0;flare=null;flareF=null;pf=null;pfAt=0;pfCell="";msgT=0;whisper=0;hit=0;js=null;nextBeat=0;nextGrowl=0;nextWarn=0;stepT=0;fear=0;sg=0;dS=99;
+  timeLeft=START_TIME;nextEv=now+R(20000,35000);tStart=now;state="play";menu.style.display="none";
+  loopOn("ambient");loopVol("ambient",1);loopOn("stalker_near");loopVol("stalker_near",0);
+  msg(`FIND ${ITEMS} ACCESS CARDS — THEN RUN`,3500);
+}
+function endGame(title,text){
+  state="over";if(document.pointerLockElement)document.exitPointerLock();loopOff("ambient");loopOff("stalker_near");
+  $("mt").textContent=title;
+  $("ms").innerHTML=`${text}<br>Cards: ${got}/${ITEMS} · Time used: ${fmt(START_TIME+got*BONUS-timeLeft)}`;
+  $("go").textContent="TRY AGAIN";setTimeout(()=>menu.style.display="flex",700);
+}
+$("go").onclick=()=>{try{cv.requestPointerLock()}catch(e){}start()};
+addEventListener("keydown",e=>{
+  keys[e.code]=1;if(e.code.startsWith("Arrow")||e.code==="Space")e.preventDefault();
+  if(state!=="play"||e.repeat)return;
+  if(e.code==="KeyL"){fl=!fl;snd("flashlight")}
+  if(e.code==="KeyE")interact();
+  if(e.code==="KeyF"&&flares>0&&!hidden){
+    flares--;let tx=px+Math.cos(pa)*3.2,ty=py+Math.sin(pa)*3.2;if(solid(tx,ty)){tx=px;ty=py}
+    flare={x:tx,y:ty,until:now+9000};flareF=bfs(tx|0,ty|0);ents.push({x:tx,y:ty,t:7,until:now+9000});snd("flare");msg("FLARE — THEY'RE DRAWN TO IT",2000)}
+  if(e.code==="KeyQ"&&adr>0){adr--;adrUntil=now+7000;hp=Math.min(100,hp+25);tired=false;stam=100;snd("adrenaline");msg("ADRENALINE",1500)}
+});
+addEventListener("keyup",e=>keys[e.code]=0);
+addEventListener("mousemove",e=>{if(document.pointerLockElement===cv&&state==="play"&&!hidden)pa+=e.movementX*.0025});
+function interact(){
+  if(hidden){px=prev[0];py=prev[1];hidden=null;snd("locker");return}
+  let best=null,bd=1.7;for(const o of ents)if(o.t===1){const d=Math.hypot(o.x-px,o.y-py);if(d<bd){bd=d;best=o}}
+  if(best){prev=[px,py];hidden=best;px=best.x;py=best.y;pa=Math.atan2(prev[1]-py,prev[0]-px);snd("locker");msg("HOLD STILL…",1500)}
+}
+function evt(){
+  const k=Math.random()*4|0;
+  if(k===0){blackout=now+R(5000,8000);msg("THE LIGHTS DIED",2500);snd("blackout")}
+  else if(k===1){startJump(false)}
+  else if(k===2){whisper=now+2600;whisperTxt=rnd(["BEHIND YOU","DON'T TURN AROUND","IT'S IN THE WALLS","LOOK UP","RUN","WE SEE YOU"]);snd("whisper")}
+  else{mons[0].chase=now+9000;msg("IT HEARD YOU",2000);snd("stalker_growl")}
+}
+const getPF=()=>{const c=(px|0)+","+(py|0);if(!pf||now>pfAt||c!==pfCell){pf=bfs(px|0,py|0);pfAt=now+300;pfCell=c}return pf};
+function stepM(m,f,sp,dt,direct){
+  const cx=m.x|0,cy=m.y|0;let best=null,bd=f[cy][cx];
+  for(const[a,b]of D){const nx=cx+a,ny=cy+b,v=f[ny]&&f[ny][nx];if(v>=0&&v<bd){bd=v;best=[nx+.5,ny+.5]}}
+  if(!best&&direct)best=[px,py];if(!best)return;
+  const dx=best[0]-m.x,dy=best[1]-m.y,l=Math.hypot(dx,dy)||1,s=Math.min(l,sp*dt);m.x+=dx/l*s;m.y+=dy/l*s;
+}
+
+// ================= per-frame update =================
+function update(dt){
+  const dark=now<blackout,lit=fl&&batt>0&&!dark,boost=now<adrUntil;
+  timeLeft-=dt;
+  if(timeLeft<=0){snd("time_up");return endGame("TIME'S UP","The facility sealed itself with you inside.")}
+  if(timeLeft<30&&now>nextWarn){snd("timer_warning");nextWarn=now+1000}
+  // movement
+  const fw=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0),st=(keys.KeyD?1:0)-(keys.KeyA?1:0),moving=!hidden&&(fw||st);
+  if(keys.ArrowLeft&&!hidden)pa-=2.2*dt;if(keys.ArrowRight&&!hidden)pa+=2.2*dt;
+  sprinting=moving&&(keys.ShiftLeft||keys.ShiftRight)&&(boost||(!tired&&stam>0));
+  if(sprinting&&!boost){stam-=24*dt;if(stam<=0){stam=0;tired=true}}else{stam=Math.min(100,stam+(moving?8:15)*dt);if(tired&&stam>20)tired=false}
+  if(moving){const sp=(sprinting?4.7:3.2)*(boost?1.25:1)*dt,c=Math.cos(pa),s=Math.sin(pa),mx=(c*fw-s*st)*sp,my=(s*fw+c*st)*sp,m=.25;
+    if(!solid(px+mx+Math.sign(mx)*m,py))px+=mx;if(!solid(px,py+my+Math.sign(my)*m))py+=my;bob+=dt*(sprinting?14:9);
+    stepT-=dt;if(stepT<=0){snd(sprinting?"run":"footstep");stepT=sprinting?.28:.5}}
+  if(map[py|0][px|0]===3&&powered){snd("win");return endGame("YOU ESCAPED",`Daylight. ${fmt(timeLeft)} to spare.`)}
+  if(lit)batt=Math.max(0,batt-.6*dt);
+  hit=Math.max(0,hit-dt*2.2);
+  // pickups
+  for(const o of ents){
+    if(o.dead)continue;
+    if(o.t===7&&now>o.until){o.dead=true;continue}
+    if(o.t<3||o.t>8||o.t===7)continue;
+    const d=Math.hypot(o.x-px,o.y-py);
+    if(d<1){o.dead=true;
+      if(o.t===8){got++;timeLeft+=BONUS;snd("item_pickup");
+        if(got===ITEMS){powered=true;snd("exit_open");msg("ALL CARDS FOUND — RUN TO THE GREEN EXIT",4500)}
+        else{msg(`ACCESS CARD ${got}/${ITEMS}  +${BONUS}s`,2500);if(Math.random()<.35)evt()}}
+      else if(o.t===3){batt=Math.min(100,batt+45);snd("battery");msg("BATTERY +",1500)}
+      else if(o.t===4){adr++;snd("pickup");msg("ADRENALINE [Q]",1500)}
+      else{flares++;snd("pickup");msg("FLARE [F]",1500)}}
+  }
+  ents=ents.filter(o=>!o.dead);
+  if(!hidden){for(const o of ents)if(o.t===1&&Math.hypot(o.x-px,o.y-py)<1.7){msg("[E] HIDE",300);break}}
+  else msg("[E] LEAVE LOCKER",300);
+  // monsters
+  const fa=flare&&flare.until>now;let nearest=99;dS=99;
+  for(const m of mons){
+    const dP=Math.hypot(px-m.x,py-m.y);nearest=Math.min(nearest,dP);dS=Math.min(dS,dP);
+    const nearFlare=fa&&Math.hypot(flare.x-m.x,flare.y-m.y)<18&&dP>4.5,lurk=nearFlare&&Math.hypot(flare.x-m.x,flare.y-m.y)<1.8;
+    let los=false;if(!hidden&&dP<18){const r=cast(Math.atan2(m.y-py,m.x-px));los=r.d>dP-.3}
+    if(!hidden&&((los&&dP<(lit?18:9))||dP<(sprinting?11:5)))m.chase=now+5000;
+    if(hidden&&dP<2.2){m.sniff+=dt;if(m.sniff>3.5)return die("It opened the locker.")}else m.sniff=Math.max(0,m.sniff-dt);
+    if(dP<10&&now>nextGrowl){snd("stalker_growl");nextGrowl=now+R(4000,7000)}
+    let f,sp=2.1;
+    if(nearFlare){f=flareF;sp=3}
+    else if(now<m.chase){f=getPF();sp=3.3+.12*got+(dark?.5:0)}
+    else{if(!m.tgt||now>m.rt||Math.hypot(m.tgt[0]+.5-m.x,m.tgt[1]+.5-m.y)<1.5){m.tgt=Math.random()<.3?[px|0,py|0]:rnd(opens);m.field=bfs(m.tgt[0],m.tgt[1]);m.rt=now+16000}f=m.field}
+    if(!lurk)stepM(m,f,sp,dt,now<m.chase&&!nearFlare);
+    if(dP<.9&&!hidden)return die("The black figure found you.");
+  }
+  fear=cl(1-nearest/14,0,1);sg=Math.pow(Math.max(0,1-dS/22),1.4)*(hidden?.4:1);
+  loopVol("stalker_near",Math.pow(Math.max(0,1-dS/22),1.4)*(hidden?.5:1));
+  if(fear>.15&&now>nextBeat){snd("heartbeat");nextBeat=now+1100-fear*650}
+  if(now>nextEv&&!js){evt();nextEv=now+R(25000,50000)}
+}
+
+// ================= rendering (dark, low-ceilinged facility) =================
+function lum(d,sx){
+  const on=fl&&batt>0&&now>=blackout;let b=.02*Math.exp(-d*.5);
+  if(on){const beam=Math.max(0,1-Math.abs(sx)*1.4);b+=(.06+.8*beam)*Math.exp(-d*.34)*(batt<15&&Math.random()<.18?.3:1)}
+  return b;
+}
+function render(){
+  const S=W/480,F=W/(2*TF),fa=flare&&flare.until>now,dk=now<blackout;
+  ctx.setTransform(1,0,0,1,0,0);
+  const sh=(fear*fear*4+hit*8+sg*sg*4)*S/2;
+  ctx.translate((Math.random()-.5)*sh,(Math.random()-.5)*sh+Math.sin(bob)*2*S);
+  let g=ctx.createLinearGradient(0,0,0,H/2);g.addColorStop(0,"#010102");g.addColorStop(1,"#08080a");ctx.fillStyle=g;ctx.fillRect(-W,-H,3*W,H*1.5);
+  g=ctx.createLinearGradient(0,H/2,0,H);g.addColorStop(0,"#050506");g.addColorStop(1,"#131316");ctx.fillStyle=g;ctx.fillRect(-W,H/2,3*W,H*1.5);
+  drawMon(now,sg);
+  for(let x=0,i=0;x<W;x+=COL,i++){
+    const sx=(x+COL/2)/W*2-1,off=Math.atan(sx*TF),a=pa+off,r=cast(a),d=Math.max(.05,r.d*Math.cos(off));zb[i]=d;
+    const hx=px+Math.cos(a)*r.d,hy=py+Math.sin(a)*r.d;
+    let b=lum(r.d,sx),fb=0;
+    if(!dk){const lx=(hx/8|0)*8+4,ly=(hy/8|0)*8+4,hh=hs(lx*7+ly*3);   // dim ceiling lights, some dead, some flickering
+      if(hh>.3){const ld=Math.hypot(lx-hx,ly-hy);if(ld<7)b+=(1-ld/7)*.3*(hh<.5?(Math.sin(now/90+hh*50)>-.3?1:.15):1)}}
+    if(fa){const fd=Math.hypot(hx-flare.x,hy-flare.y);if(fd<7)fb=(1-fd/7)*.9*(.8+.2*Math.sin(now/60))}
+    if(r.t===3)b=Math.max(b,.55);
+    const sd=r.side?.74:1,base=r.t===3?(powered?[40,210,90]:[210,40,40]):r.t===2?[40,46,56]:[78,72,66];
+    const h=F*WALL_H/d,top=H/2+.4*F/d-h;
+    ctx.fillStyle=`rgb(${Math.min(255,base[0]*(b+fb*1.3)*sd)|0},${Math.min(255,base[1]*(b+fb*.35)*sd)|0},${Math.min(255,base[2]*(b+fb*.3)*sd)|0})`;
+    ctx.fillRect(x,top,COL,h+1);
+    const fr=((r.hit%1)+1)%1;
+    ctx.fillStyle="rgba(0,0,0,.3)";
+    if(fr<.05||fr>.95)ctx.fillRect(x,top,COL,h);
+    ctx.fillRect(x,top+h*.5,COL,Math.max(1,h*.015));ctx.fillRect(x,top+h*.93,COL,h*.07);
+    if(r.t===2){const k=Math.floor(fr*10)+r.mx*3+r.my*7;   // server racks: blinking LEDs that stay visible in the dark
+      for(let j=0;j<4;j++)if(hs(k*3+j)<.45){ctx.fillStyle=["#0f0","#fa0","#f22","#0cf"][(hs(k+j*9)*4|0)];if(Math.sin(now/200+k+j)>-.6)ctx.fillRect(x,top+h*(.18+j*.2),COL,Math.max(1,h*.02))}}
+    else if(r.t===1&&hs(r.mx*7.1+r.my*13.7+(r.side?1:0))<.18){ctx.fillStyle=`rgba(${(130*(b+fb))|0},0,0,.6)`;ctx.fillRect(x,top+h*.4,COL,h*(.15+.4*hs(Math.floor(fr*8)+r.mx*3+r.my*5)))}
+  }
+  // sprites
+  const L=[];
+  for(const o of ents){const ex=o.x-px,ey=o.y-py,d2=ex*ex+ey*ey;if(d2<420)L.push({o,t:o.t,d:Math.sqrt(d2),x:o.x,y:o.y})}
+  for(const m of mons){const ex=m.x-px,ey=m.y-py;L.push({o:m,t:m.t,d:Math.hypot(ex,ey),x:m.x,y:m.y})}
+  L.sort((a,b)=>b.d-a.d);
+  for(const e of L){
+    let ang=Math.atan2(e.y-py,e.x-px)-pa;while(ang>Math.PI)ang-=6.2832;while(ang<-Math.PI)ang+=6.2832;
+    if(Math.abs(ang)>Math.PI/4+.3)continue;
+    const dep=e.d*Math.cos(ang);if(dep<.15)continue;
+    const s=SPR[e.t],tx=s[0],h=F*.8/dep,sh2=h*s[1],sw=sh2*s[2],sx=(.5+Math.tan(ang)/(2*TF))*W,top=H/2+.4*F/dep-sh2,x0=sx-sw/2;
+    ctx.globalAlpha=cl(lum(e.d,Math.tan(ang)/TF)*1.5+s[3],.03,1);
+    for(let x=Math.max(0,Math.floor(x0/COL)*COL);x<Math.min(W,x0+sw);x+=COL){
+      if(dep>zb[x/COL|0])continue;
+      const cw=tx.width,u=cl((x-x0)/sw*cw,0,cw-1),w2=Math.max(1,COL/sw*cw);
+      ctx.drawImage(tx,u,0,Math.min(w2,cw-u),tx.height,x,top,COL,sh2);
+    }
+  }
+  ctx.globalAlpha=1;ctx.setTransform(1,0,0,1,0,0);
+  // flashlight glow, vignette, damage
+  if(fl&&batt>0&&!dk){ctx.globalCompositeOperation="lighter";g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W*.42);g.addColorStop(0,"rgba(200,215,255,.08)");g.addColorStop(1,"rgba(200,215,255,0)");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);ctx.globalCompositeOperation="source-over"}
+  g=ctx.createRadialGradient(W/2,H/2,H*.18,W/2,H/2,W*.7);g.addColorStop(0,"rgba(0,0,0,0)");g.addColorStop(1,`rgba(${fear*70|0},0,0,.92)`);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  if(hit>0){ctx.fillStyle=`rgba(200,0,0,${hit*.4})`;ctx.fillRect(0,0,W,H)}
+  if(hidden){ctx.fillStyle="#000";ctx.fillRect(0,0,W*.43,H);ctx.fillRect(W*.57,0,W*.43,H)}
+  // static builds as the black figure gets close (light, and thinner when it's right on you)
+  const vis=.3+.7*Math.min(1,dS/5);
+  if(sg>.02){
+    for(let i=0,n=(sg*3*vis*Math.random()|0);i<n;i++){const y=Math.random()*H,hh=(3+Math.random()*(12+sg*25))*S/2.6;ctx.drawImage(cv,0,y,W,hh,(Math.random()-.5)*(30*sg+40*sg*sg)*S/2.6,y,W,hh)}
+    const id=nzx.createImageData(160,90),dd=id.data;for(let i=0;i<dd.length;i+=4){dd[i]=dd[i+1]=dd[i+2]=Math.random()*255;dd[i+3]=255}
+    nzx.putImageData(id,0,0);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=Math.min(.35,sg*sg*.4+sg*.03)*vis;ctx.drawImage(nz,0,0,W,H);ctx.globalAlpha=1;ctx.imageSmoothingEnabled=true;
+    if(sg>.4){ctx.fillStyle=`rgba(0,0,0,${sg*.15*vis})`;for(let y=0;y<H;y+=4)ctx.fillRect(0,y,W,1)}
+  }
+  if(dS<3.5){const k=1-dS/3.5;ctx.globalAlpha=k*.4;ctx.drawImage(cv,Math.round(5*k),0);ctx.drawImage(cv,-Math.round(5*k),0);ctx.globalAlpha=1}   // RGB split when it is on top of you
+  if(js)drawFace();
+}
+
+// ================= main loop =================
+let last=performance.now();
+function loop(t){
+  now=t;const dt=Math.min(.05,(t-last)/1000);last=t;
+  if(state==="play"){
+    update(dt);
+    if(now>msgT)msgEl.textContent="";
+    if(now<whisper&&Math.random()<.3){msgEl.textContent=[...whisperTxt].map(c=>Math.random()<.2?"▓":Math.random()<.4?c.toLowerCase():c).join("")+rnd(["̷","̶","̴","̸"])}
+    const bar=v=>"█".repeat(Math.round(v/10)).padEnd(10,"░");
+    hud.textContent=`HEALTH   ${bar(hp)}\nBATTERY  ${bar(batt)}${fl?"":" (off)"}\nSTAMINA  ${bar(stam)}\nCARDS    ${got}/${ITEMS}${powered?" — EXIT OPEN":""}\nFLARES ${flares} [F]   ADRENALINE ${adr} [Q]`;
+    tm.textContent=fmt(timeLeft);tm.style.color=timeLeft<60?(Math.sin(now/150)>0?"#f33":"#a00"):"#cde";
+  }else if(state==="menu"){hud.textContent="";tm.textContent="";pa=(pa||0)+dt*.1}
+  if(js&&now>js.t0+js.dur){const f=js.fatal;js=null;if(f)endGame("YOU DIED",why)}
+  if(map)render();
+  requestAnimationFrame(loop);
+}
+gen();px=5.5;py=5.5;pa=0;fl=true;batt=100;fear=0;sg=0;dS=99;hit=0;js=null;flare=null;blackout=0;powered=false;hidden=null;
+console.table(Object.fromEntries(Object.entries(SOUND_FILES).map(([k,v])=>[k,"game/"+v[0]])));
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

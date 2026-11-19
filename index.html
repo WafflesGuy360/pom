@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project Omega</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root{
+    --red:#d22;
+    --red-bright:#e33;
+    --dim:#7a7a7a;
+    --dim-hover:#aaa;
+    --bg:#030203;
+    --text:#b8b0a8;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--red);font-family:"Courier New",monospace;overflow:hidden;user-select:none}
+  body{
+    background:
+      radial-gradient(ellipse at 50% 35%, #1c0608 0%, transparent 55%),
+      radial-gradient(ellipse at 70% 80%, #120308 0%, transparent 40%),
+      linear-gradient(180deg, #080204 0%, #020102 100%);
+  }
+
+  #bg{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+  #bg span{
+    position:absolute;white-space:nowrap;font-weight:bold;color:var(--red);
+    opacity:.07;transition:opacity .25s, transform .4s;
+    text-shadow:0 0 8px #400;
+  }
+
+  #vig{
+    position:fixed;inset:0;pointer-events:none;z-index:1;
+    background:radial-gradient(ellipse at center, transparent 25%, #000a 70%, #000 100%);
+  }
+
+  main,#story,#howto,#dossier{
+    position:fixed;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;
+    padding:24px;z-index:2;
+  }
+  [hidden]{display:none!important}
+
+  /* Title */
+  #title{
+    position:relative;
+    margin:0 0 clamp(32px,7vh,72px);
+    font-size:clamp(36px,9.5vw,108px);
+    letter-spacing:.18em;
+    font-weight:bold;
+    color:#d22;
+    display:flex;
+    align-items:baseline;
+    justify-content:center;
+    gap:0.18em;          /* proper space between GOD and IS COMING */
+  }
+  #god{
+    display:inline-block;
+    position:relative;
+    color:#d22;
+    text-shadow:0 0 18px #700, 0 0 40px #400;
+    will-change:transform, color;
+    letter-spacing:.18em;
+  }
+  #rest{
+    color:#d22;
+    text-shadow:0 0 18px #700, 0 0 40px #400;
+    letter-spacing:.18em;
+  }
+  /* flickering dots around GOD */
+  .god-dot{
+    position:absolute;
+    width:3px;height:3px;
+    border-radius:50%;
+    background:#fff;
+    pointer-events:none;
+    opacity:0;
+    box-shadow:0 0 4px #f00, 0 0 8px #fff;
+  }
+
+  /* Subtitle under title */
+  #sub{
+    margin:-18px 0 clamp(36px,6vh,56px);
+    font-size:clamp(11px,1.6vw,15px);
+    letter-spacing:.45em;
+    color:#666;
+    text-transform:uppercase;
+  }
+
+  /* Nav */
+  #nav,#modes{
+    display:flex;flex-direction:column;
+    gap:clamp(12px,2.4vh,24px);
+    align-items:center;
+  }
+  #nav button,#modes button,#story button,#howto button,#dossier button{
+    font:inherit;background:none;border:0;
+    color:var(--dim);cursor:pointer;
+    letter-spacing:.38em;
+    font-size:clamp(17px,3.2vw,30px);
+    padding:8px 22px 8px 30px;
+    transition:color .18s, text-shadow .18s, transform .18s, letter-spacing .18s;
+    position:relative;
+  }
+  #nav button:hover,#modes button:hover{color:var(--dim-hover)}
+  #nav button.on,#modes button.on{
+    color:var(--red-bright);
+    text-shadow:0 0 16px #900, 0 0 4px #f55;
+    transform:translateX(8px);
+    letter-spacing:.42em;
+  }
+  /* glitch on hover / keyboard focus */
+  #nav button::after,#modes button::after{
+    content:attr(data-text);
+    position:absolute;inset:0;
+    padding:inherit;font:inherit;letter-spacing:inherit;text-align:center;white-space:nowrap;
+    color:#f0f;opacity:0;pointer-events:none;mix-blend-mode:screen;
+  }
+  #nav button:hover,#nav button:focus-visible,
+  #modes button:hover,#modes button:focus-visible{
+    animation:glT .42s steps(1,end) infinite;
+  }
+  #nav button:hover::after,#nav button:focus-visible::after,
+  #modes button:hover::after,#modes button:focus-visible::after{
+    opacity:.85;animation:glA .38s steps(1,end) infinite;
+  }
+  @keyframes glT{
+    0%  {text-shadow:3px 0 #0ff,-3px 0 #f0f,0 0 16px #900;translate:0 0}
+    17% {text-shadow:-4px 0 #0ff,4px 0 #f0f,0 0 22px #f00;translate:2px -1px}
+    34% {text-shadow:2px 1px #0ff,-5px 0 #f0f,0 0 10px #900;translate:-3px 0}
+    51% {text-shadow:-2px 0 #0ff,3px -1px #f0f,0 0 24px #f22;translate:1px 1px}
+    68% {text-shadow:5px 0 #0ff,-2px 0 #f0f,0 0 14px #900;translate:-2px 0}
+    85% {text-shadow:-3px 0 #0ff,2px 0 #f0f,0 0 18px #f00;translate:3px 0}
+  }
+  @keyframes glA{
+    0%  {clip-path:inset(0 0 82% 0);transform:translateX(-7px)}
+    16% {clip-path:inset(34% 0 44% 0);transform:translateX(8px)}
+    33% {clip-path:inset(62% 0 8% 0);transform:translateX(-5px)}
+    50% {clip-path:inset(8% 0 72% 0);transform:translateX(9px)}
+    66% {clip-path:inset(76% 0 4% 0);transform:translateX(-8px)}
+    83% {clip-path:inset(46% 0 30% 0);transform:translateX(6px)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    #nav button:hover,#nav button:focus-visible,#nav button:hover::after,#nav button:focus-visible::after,
+    #modes button:hover,#modes button:focus-visible,#modes button:hover::after,#modes button:focus-visible::after{animation:none}
+  }
+  #nav button.on::before,#modes button.on::before{
+    content:"▸";
+    position:absolute;
+    left:0;
+    margin-left:-0.2em;
+    color:var(--red-bright);
+    text-shadow:0 0 10px #a00;
+  }
+  #nav button:focus-visible,
+  #modes button:focus-visible,
+  #story button:focus-visible,
+  #howto button:focus-visible,
+  #dossier button:focus-visible,
+  #snd:focus-visible{
+    outline:1px solid #e33;
+    outline-offset:5px;
+  }
+
+  /* Story / How-to / Dossier panels */
+  #story,#howto,#dossier{
+    max-width:640px;
+    margin:0 auto;
+    overflow-y:auto;
+  }
+  #story h2,#howto h2,#dossier h2{
+    margin:0 0 28px;
+    font-size:clamp(22px,4.2vw,40px);
+    letter-spacing:.32em;
+    color:var(--red);
+    text-shadow:0 0 16px #600;
+  }
+  #story p,#howto p,#dossier p{
+    max-width:580px;
+    line-height:1.8;
+    margin:0 0 18px;
+    color:var(--text);
+    font-size:clamp(14px,1.85vw,17px);
+    text-align:left;
+  }
+  #story p em,#howto p em,#dossier p em{
+    color:#c66;
+    font-style:normal;
+  }
+  #story p:last-of-type,#dossier p:last-of-type{
+    color:#c33;
+    margin-top:8px;
+  }
+  #story button,#howto button,#dossier button{
+    margin-top:28px;
+    color:var(--red-bright);
+    letter-spacing:.3em;
+  }
+  #story button:hover,#howto button:hover,#dossier button:hover{
+    text-shadow:0 0 12px #900;
+  }
+
+  /* Bottom UI */
+  #snd{
+    position:fixed;
+    right:calc(16px + env(safe-area-inset-right,0px));
+    bottom:calc(14px + env(safe-area-inset-bottom,0px));
+    z-index:3;
+    background:none;border:0;
+    color:#555;font:inherit;font-size:13px;
+    cursor:pointer;letter-spacing:.12em;
+    transition:color .2s;
+  }
+  #snd:hover{color:#c33}
+  #hint{
+    position:fixed;
+    left:16px;
+    bottom:calc(14px + env(safe-area-inset-bottom,0px));
+    font-size:12px;color:#3a3a3a;
+    z-index:3;pointer-events:none;
+    letter-spacing:.06em;
+  }
+
+  /* Fade overlay */
+  #fade{
+    position:fixed;inset:0;background:#000;
+    opacity:0;pointer-events:none;z-index:9;
+    display:flex;align-items:center;justify-content:center;
+    transition:opacity .95s ease-in;
+    color:#555;letter-spacing:.25em;font-size:14px;
+  }
+  #fade.go{opacity:1;pointer-events:all}
+
+  /* Loading screen */
+  #loader{
+    position:fixed;inset:0;z-index:10;
+    background:#030203;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    opacity:0;pointer-events:none;
+    transition:opacity .55s ease;
+  }
+  #loader.show{
+    opacity:1;pointer-events:all;
+  }
+  #loader .ltitle{
+    font-size:clamp(28px,7vw,64px);
+    letter-spacing:.28em;
+    color:#d22;
+    text-shadow:0 0 20px #600, 0 0 40px #400;
+    margin-bottom:8px;
+    font-weight:bold;
+  }
+  #loader .lsub{
+    font-size:12px;
+    letter-spacing:.4em;
+    color:#555;
+    margin-bottom:42px;
+    text-transform:uppercase;
+  }
+  #loader .bar-wrap{
+    width:min(280px,70vw);
+    height:3px;
+    background:#1a0a0c;
+    border:1px solid #3a1518;
+    position:relative;
+    overflow:hidden;
+  }
+  #loader .bar{
+    position:absolute;left:0;top:0;bottom:0;
+    width:0%;
+    background:linear-gradient(90deg,#600,#d22,#f44);
+    box-shadow:0 0 12px #d22;
+    transition:width .15s linear;
+  }
+  #loader .pct{
+    margin-top:16px;
+    font-size:13px;
+    letter-spacing:.25em;
+    color:#666;
+  }
+  #loader .hint{
+    position:absolute;
+    bottom:28px;
+    font-size:11px;
+    letter-spacing:.15em;
+    color:#333;
+  }
+
+  /* Thin decorative lines */
+  .line{
+    width:min(280px,60vw);
+    height:1px;
+    background:linear-gradient(90deg, transparent, #5a1018 20%, #5a1018 80%, transparent);
+    margin:0 auto 28px;
+    opacity:.55;
+  }
+
+  /* Start gate — must interact before menu + music */
+  #gate{
+    position:fixed;inset:0;z-index:20;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    background:#030203;
+    cursor:pointer;
+    transition:opacity .7s ease, visibility .7s;
+  }
+  #gate.hide{
+    opacity:0;visibility:hidden;pointer-events:none;
+  }
+  #gate .g-title{
+    font-size:clamp(28px,7vw,64px);
+    letter-spacing:.28em;
+    color:#d22;
+    text-shadow:0 0 22px #600, 0 0 48px #400;
+    font-weight:bold;
+    margin-bottom:12px;
+  }
+  #gate .g-box{
+    margin-top:36px;
+    border:1px solid #5a1518;
+    padding:16px 36px;
+    letter-spacing:.35em;
+    font-size:clamp(13px,2vw,16px);
+    color:#999;
+    background:rgba(40,8,10,.35);
+    transition:color .2s, border-color .2s, box-shadow .2s, background .2s;
+  }
+  #gate:hover .g-box{
+    color:#e33;
+    border-color:#a22;
+    background:rgba(60,10,12,.5);
+    box-shadow:0 0 20px #400;
+  }
+  #gate .g-hint{
+    margin-top:28px;
+    font-size:11px;
+    letter-spacing:.2em;
+    color:#444;
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    #god{transform:none!important}
+  }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="vig"></div>
+
+<!-- click / key gate so music can start -->
+<div id="gate">
+  <div class="g-title">PROJECT OMEGA</div>
+  <div class="g-box">CLICK OR PRESS ANY KEY</div>
+  <div class="g-hint">audio will begin</div>
+</div>
+
+<main id="home" hidden>
+  <h1 id="title"><span id="rest">PROJECT </span><span id="god">OMEGA</span></h1>
+  <div id="sub">the papers are waiting</div>
+  <div class="line"></div>
+  <nav id="nav" aria-label="Main menu">
+    <button data-a="gamemodes" class="on">Gamemodes</button>
+    <button data-a="story">Backstory</button>
+    <button data-a="dossier">Dossier</button>
+    <button data-a="howto">How to Play</button>
+    <button data-a="exit">Exit</button>
+  </nav>
+  <nav id="modes" aria-label="Gamemodes" hidden>
+    <button data-a="play" class="on">Brick Maze</button>
+    <button data-a="facility">Facility</button>
+    <button data-a="survival">Survival</button>
+    <button data-a="backrooms">Backrooms</button>
+    <button data-a="basement">Basement</button>
+    <button data-a="forest">Forrest</button>
+    <button data-a="modes-back">← Back</button>
+  </nav>
+</main>
+
+<section id="story" hidden>
+  <h2>BACKSTORY</h2>
+  <div class="line"></div>
+  <p>You are already asleep. You just don’t know it yet.</p>
+  <p>This place is not a building. It is a dream that refuses to end — a labyrinth of red brick and dead lights, folded in on itself so tightly that the waking world has become a rumor. Ten pages were torn from something older than language and scattered through the corridors. Collect them all, and the dream may finally release you.</p>
+  <p>Fail, and the five minutes run out. Then <em>He</em> arrives. You will never see Him. You will only feel the walls begin to breathe, the writing start to move, and a sound that grows until there is nothing left of you but the echo of your own name.</p>
+  <p>Those who stay too long do not wake up. The dream keeps them. Forever.</p>
+  <button class="back-btn">← Back</button>
+</section>
+
+<section id="howto" hidden>
+  <h2>HOW TO PLAY</h2>
+  <div class="line"></div>
+  <p><em>WASD</em> — Move through the maze</p>
+  <p><em>Shift</em> — Run</p>
+  <p><em>Mouse</em> or <em>← →</em> — Look around</p>
+  <p>Find and collect all <em>10 papers</em> before the timer reaches zero.</p>
+  <p>A green arrow at the top of the screen points toward the nearest uncollected paper.</p>
+  <p>If the timer ends before you gather every page, something arrives. You cannot fight it. You can only run — and running will not be enough.</p>
+  <button class="back-btn">← Back</button>
+</section>
+
+<section id="dossier" hidden>
+  <h2>DOSSIER</h2>
+  <div class="line"></div>
+  <p>Designation: <em>BASEMENT</em> — also logged as Level 0.</p>
+  <p>The structure does not appear on any facility map. Staff who report a “green room” and “endless carpeted halls” are usually written off as exhausted. They are not exhausted. They have crossed into a closed loop of yellowed wallpaper, dead fluorescent pools, and doors that lead only to more of the same.</p>
+  <p>Inside, papers keep appearing on the floor. No one knows who prints them. Collect them and carry them to the table in the green safe room. That room is the only cell the entity will not enter. Turn the pages in there and the system pays you in silence and a little more time.</p>
+  <p>The entity is called <em>Take Care</em>. It does not run until it sees you. It does not speak. It learns the last place it had line of sight and walks there with the patience of something that has already outlived every witness. Static climbs the walls when it is near. The lights dip. Your vision shreds. If it touches you outside the green room, you drop every paper you were carrying and the loop resets around your body.</p>
+  <p>There is no timer in the Basement. There is no exit condition published in the logs. The instruction left on the first recovered tape is four words long: survive, collect, turn in. The second tape adds one more: <em>it cannot enter green</em>.</p>
+  <p>VHS overlay optional. Footsteps optional. Looking away is not. The halls do not empty when you close your eyes. Take Care is already walking them. The papers are already waiting. The green room is the only kindness the place has ever shown, and even that may be a trap that simply has not finished closing.</p>
+  <p>Enter Basement only if you are willing to be lost for a while. The dream does not guarantee you will be found again.</p>
+  <button class="back-btn">← Back</button>
+</section>
+
+<div id="hint" hidden>↑ ↓ choose · Enter select</div>
+<button id="snd" aria-label="Toggle music" hidden>♪ music on</button>
+<div id="fade"></div>
+<div id="loader">
+  <div class="ltitle">PROJECT OMEGA</div>
+  <div class="lsub">loading</div>
+  <div class="bar-wrap"><div class="bar" id="lbar"></div></div>
+  <div class="pct" id="lpct">0%</div>
+  <div class="hint">do not look away</div>
+</div>
+
+<script>
+const GAME_URL = "game/main.html";            // Brick Maze
+const FACILITY_URL = "game/fic.html";
+const SURVIVAL_URL = "game/survival.html";
+const BACKROOMS_URL = "game/backrooms.html";
+const BASEMENT_URL = "game/take-care.html";
+const FOREST_URL = "game/forest/forest.html";
+const MUSIC_SRC = "game/music.mp3";
+const $ = id => document.getElementById(id);
+const home=$("home"), story=$("story"), fadeEl=$("fade"), snd=$("snd");
+const modesEl = $("modes");
+const navEl = $("nav");
+
+// ---------- only the word OMEGA glitches / flashes / jiggles + dots ----------
+const godEl = $("god");
+const GOD_FORMS = [
+  "OMEGA","0MEGA","OM3GA","OME6A","0M3GA","OmEgA","oMeGa","OMEGA",
+  "ØMEGA","OME6A","0MEGA","OMEGA","om3ga","0M3G4","OMEGA"
+];
+const GOD_COLORS = ["#d22","#f00","#0ff","#f0f","#fff","#ff0","#f33","#0f0","#f0c","#d22"];
+let godIdx = 0;
+
+// create flickering dots around OMEGA
+const dots = [];
+for(let i=0;i<12;i++){
+  const d = document.createElement("span");
+  d.className = "god-dot";
+  godEl.appendChild(d);
+  dots.push(d);
+}
+
+function cycleGod(){
+  const form = GOD_FORMS[godIdx % GOD_FORMS.length];
+  const col  = GOD_COLORS[godIdx % GOD_COLORS.length];
+
+  if(godEl.firstChild.nodeType !== 3){
+    godEl.insertBefore(document.createTextNode(form), godEl.firstChild);
+  } else {
+    godEl.firstChild.nodeValue = form;
+  }
+
+  godEl.style.color = col;
+  godEl.style.textShadow = `0 0 14px ${col}, 0 0 28px ${col}aa, 0 0 5px #000`;
+
+  // stronger fast jiggle / wobble
+  const tx  = (Math.random()-0.5)*11;
+  const ty  = (Math.random()-0.5)*7;
+  const rot = (Math.random()-0.5)*9;
+  const sc  = 0.96 + Math.random()*0.1;
+  godEl.style.transform = `translate(${tx}px,${ty}px) rotate(${rot}deg) scale(${sc})`;
+
+  // flicker the dots
+  dots.forEach(d => {
+    if(Math.random() < 0.55){
+      const ang = Math.random()*Math.PI*2;
+      const dist = 18 + Math.random()*38;
+      d.style.left = `calc(50% + ${Math.cos(ang)*dist}px)`;
+      d.style.top  = `calc(50% + ${Math.sin(ang)*dist}px)`;
+      d.style.opacity = 0.4 + Math.random()*0.6;
+      d.style.background = Math.random()<0.4 ? col : "#fff";
+      d.style.transform = `scale(${0.6+Math.random()*1.4})`;
+    } else {
+      d.style.opacity = 0;
+    }
+  });
+
+  godIdx++;
+  const hold = (form === "OMEGA" && Math.random() < 0.15) ? 120 + Math.random()*70 : 18 + Math.random()*28;
+  setTimeout(cycleGod, hold);
+}
+cycleGod();
+
+// ---------- music ----------
+const mus = new Audio(MUSIC_SRC); mus.loop = true; mus.preload = "auto"; mus.volume = 0;
+let on = true, ok = true, started = false, gated = false;
+mus.onerror = () => { ok = false; snd.hidden = true; };
+function fade(to, ms, done){
+  const from = mus.volume, t0 = performance.now();
+  (function step(n){
+    const p = Math.min(1, (n - t0) / ms);
+    mus.volume = Math.max(0, Math.min(1, from + (to - from) * p));
+    p < 1 ? requestAnimationFrame(step) : done && done();
+  })(t0);
+}
+function beginMusic(){
+  if(started || !ok) return;
+  mus.play().then(() => { started = true; if(on) fade(.55, 2200); }).catch(() => {});
+}
+
+// ---------- start gate ----------
+const gate = $("gate");
+function openGate(){
+  if(gated) return;
+  gated = true;
+  beginMusic();
+  gate.classList.add("hide");
+  home.hidden = false;
+  $("hint").hidden = false;
+  if(ok) snd.hidden = false;
+  // focus first menu item after transition
+  setTimeout(() => { items[sel]?.focus(); }, 100);
+}
+gate.addEventListener("click", openGate);
+addEventListener("keydown", e => {
+  if(!gated){ e.preventDefault(); openGate(); }
+});
+
+snd.onclick = () => {
+  on = !on; snd.textContent = on ? "♪ music on" : "♪ music off";
+  if(!started) beginMusic(); else fade(on ? .55 : 0, 400);
+};
+
+// ---------- menu ----------
+let items = [...document.querySelectorAll("#nav button")];
+let sel = 0;
+let inModes = false;
+
+function setItems(list){
+  items = list;
+  sel = 0;
+  items.forEach((b,j) => b.classList.toggle("on", j === 0));
+}
+
+function mark(i){
+  sel = (i + items.length) % items.length;
+  items.forEach((b,j) => b.classList.toggle("on", j === sel));
+}
+
+function bindButtons(list){
+  list.forEach((b,i) => {
+    b.onmouseenter = () => mark(i);
+    b.onclick = () => act(b.dataset.a);
+  });
+}
+
+bindButtons(items);
+bindButtons([...document.querySelectorAll("#modes button")]);
+
+// glitch text while hovered / focused
+const GSW = {O:"0",I:"1",E:"3",A:"4",S:"5",T:"7",G:"6",B:"8"}, JUNK = "#@%&?▓▒░¥§Ж";
+function attachGlitch(list){
+  list.forEach(b => {
+    const orig = b.textContent; let iv = 0;
+    const set = t => { b.textContent = t; b.dataset.text = t; };
+    const scramble = () => set([...orig].map(c =>
+      c === " " ? c : Math.random() < .22 ? (GSW[c.toUpperCase()] || JUNK[Math.random()*JUNK.length|0]) : Math.random() < .3 ? c.toLowerCase() : c).join(""));
+    const on = () => { if(iv) return; iv = setInterval(() => Math.random() < .55 ? scramble() : set(orig), 90); scramble(); };
+    const off = () => { clearInterval(iv); iv = 0; set(orig); };
+    set(orig);
+    b.addEventListener("mouseenter", on); b.addEventListener("mouseleave", off);
+    b.addEventListener("focus", () => { if(b.matches(":focus-visible")) on(); }); b.addEventListener("blur", off);
+  });
+}
+attachGlitch([...document.querySelectorAll("#nav button")]);
+attachGlitch([...document.querySelectorAll("#modes button")]);
+
+const howto = $("howto"), dossier = $("dossier");
+
+function showMainMenu(){
+  modesEl.hidden = true;
+  navEl.hidden = false;
+  inModes = false;
+  setItems([...document.querySelectorAll("#nav button")]);
+  items[sel]?.focus();
+}
+
+function showModes(){
+  navEl.hidden = true;
+  modesEl.hidden = false;
+  inModes = true;
+  setItems([...document.querySelectorAll("#modes button")]);
+  items[0]?.focus();
+}
+
+function showHome(){
+  story.hidden = true;
+  howto.hidden = true;
+  dossier.hidden = true;
+  home.hidden = false;
+  showMainMenu();
+}
+document.querySelectorAll(".back-btn").forEach(b => b.onclick = showHome);
+
+function runLoader(url){
+  const loader = $("loader");
+  const bar = $("lbar");
+  const pct = $("lpct");
+  loader.classList.add("show");
+  let p = 0;
+  const steps = [
+    [12, 180], [28, 220], [41, 160], [53, 280],
+    [67, 190], [79, 240], [88, 150], [94, 200], [100, 180]
+  ];
+  let i = 0;
+  function next(){
+    if(i >= steps.length){
+      setTimeout(() => { location.href = url; }, 350);
+      return;
+    }
+    const [target, delay] = steps[i++];
+    const start = p;
+    const t0 = performance.now();
+    (function tick(now){
+      const t = Math.min(1, (now - t0) / delay);
+      p = start + (target - start) * t;
+      bar.style.width = p + "%";
+      pct.textContent = Math.round(p) + "%";
+      if(t < 1) requestAnimationFrame(tick);
+      else next();
+    })(t0);
+  }
+  next();
+}
+
+function act(a){
+  if(a === "gamemodes"){
+    showModes();
+  }else if(a === "modes-back"){
+    showMainMenu();
+  }else if(a === "play"){
+    fade(0, 400);
+    fadeEl.classList.add("go");
+    setTimeout(() => runLoader(GAME_URL), 450);
+  }else if(a === "facility"){
+    fade(0, 400);
+    fadeEl.classList.add("go");
+    setTimeout(() => runLoader(FACILITY_URL), 450);
+  }else if(a === "survival"){
+    fade(0, 400);
+    fadeEl.classList.add("go");
+    setTimeout(() => runLoader(SURVIVAL_URL), 450);
+  }else if(a === "backrooms"){
+    fade(0, 400);
+    fadeEl.classList.add("go");
+    setTimeout(() => runLoader(BACKROOMS_URL), 450);
+  }else if(a === "basement"){
+    fade(0, 400);
+    fadeEl.classList.add("go");
+    setTimeout(() => runLoader(BASEMENT_URL), 450);
+  }else if(a === "forest"){
+    fade(0, 400);
+    fadeEl.classList.add("go");
+    setTimeout(() => runLoader(FOREST_URL), 450);
+  }else if(a === "story"){
+    home.hidden = true;
+    howto.hidden = true;
+    dossier.hidden = true;
+    story.hidden = false;
+    story.querySelector(".back-btn").focus();
+  }else if(a === "dossier"){
+    home.hidden = true;
+    story.hidden = true;
+    howto.hidden = true;
+    dossier.hidden = false;
+    dossier.querySelector(".back-btn").focus();
+  }else if(a === "howto"){
+    home.hidden = true;
+    story.hidden = true;
+    dossier.hidden = true;
+    howto.hidden = false;
+    howto.querySelector(".back-btn").focus();
+  }else{
+    fade(0, 600);
+    fadeEl.classList.add("go");
+    try{ window.close(); }catch(_){}
+    setTimeout(() => {
+      fadeEl.textContent = "It’s over. You can close this tab.";
+    }, 1000);
+  }
+}
+
+addEventListener("keydown", e => {
+  if(!gated) return;
+  if(!story.hidden || !howto.hidden || !dossier.hidden){
+    if(e.key === "Escape" || e.key === "Backspace" || e.key === "Enter"){
+      e.preventDefault(); showHome();
+    }
+    return;
+  }
+  if(inModes && (e.key === "Escape" || e.key === "Backspace")){
+    e.preventDefault();
+    showMainMenu();
+    return;
+  }
+  if(e.key === "ArrowDown" || e.key === "s"){
+    e.preventDefault(); mark(sel + 1); items[sel].focus();
+  }else if(e.key === "ArrowUp" || e.key === "w"){
+    e.preventDefault(); mark(sel - 1); items[sel].focus();
+  }else if(e.key === "Enter"){
+    e.preventDefault(); act(items[sel].dataset.a);
+  }
+});
+
+// subtle button flicker
+setInterval(() => {
+  if(Math.random() < .28){
+    const b = items[Math.random()*items.length|0];
+    b.style.opacity = .4;
+    setTimeout(() => b.style.opacity = 1, 50 + Math.random()*80);
+  }
+}, 1100);
+
+// ---------- drifting whispers ----------
+const PH = ["HE IS HERE","RUN","HE SEES YOU","BEHIND YOU","LOOK UP","TOO LATE","I SEE YOU","LEAVE","HE KNOWS","IT’S WATCHING","THE PAPERS","FIVE MINUTES"];
+const SW = {O:"0",I:"1",E:"3",A:"4",S:"5",T:"7"}, bg = $("bg"), sp = [];
+for(let i = 0; i < 14; i++){
+  const s = document.createElement("span"), r = () => PH[Math.random()*PH.length|0];
+  s.textContent = r();
+  s.dataset.b = s.textContent;
+  s.style.left = Math.random()*90 + "%";
+  s.style.top = Math.random()*94 + "%";
+  s.style.fontSize = (13 + Math.random()*36) + "px";
+  bg.appendChild(s);
+  sp.push(s);
+}
+setInterval(() => {
+  const s = sp[Math.random()*sp.length|0];
+  s.textContent = Math.random() < .45
+    ? s.dataset.b
+    : [...s.dataset.b].map(c => Math.random() < .28 && SW[c] ? SW[c] : c).join("");
+  if(Math.random() < .12){
+    s.style.left = Math.random()*90 + "%";
+    s.style.top = Math.random()*94 + "%";
+    s.dataset.b = PH[Math.random()*PH.length|0];
+  }
+  s.style.opacity = Math.random() < .18 ? .18 : .06;
+}, 240);
+</script>
+</body>
+</html>
